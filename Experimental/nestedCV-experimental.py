@@ -14,8 +14,12 @@ from matplotlib import pyplot as plt
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import GridSearchCV, cross_val_score, KFold
 import numpy as np
+from sklearn.metrics import mean_squared_error,mean_squared_log_error
 from grid_search import NestedGridSearchCV
 from mpi4py import MPI
+from sklearn.model_selection import check_cv
+from sklearn.base import is_classifier
+from sklearn.model_selection._validation import _fit_and_score
 
 train = pd.read_csv('./data/train.csv')
 test = pd.read_csv('./data/test.csv')
@@ -33,7 +37,7 @@ def data_engineering(train, test):
     cc_data = pd.concat([train, test], sort=True)
     cc_data = cc_data.drop(['Id', 'SalePrice','Alley', 'FireplaceQu', 'PoolQC', 'Fence', 'MiscFeature'], axis=1)
     
-    train["SalePrice"] = np.log1p(train["SalePrice"])
+    #train["SalePrice"] = np.log1p(train["SalePrice"])
     y = train['SalePrice']
     
     cc_data = pd.get_dummies(cc_data, prefix_sep='_')
@@ -45,44 +49,76 @@ def data_engineering(train, test):
     
     return X_train,X_test,y
 
-def nested_grid_search(X,y,estimator, param_grid, scoring=None, outer_cv=None, inner_cv=None):
+def nested_grid_search(X,y,estimator, param_grid, scoring=mean_squared_error, outer_cv=None, inner_cv=None):
     for i, (train_index_outer, test_index_outer) in enumerate(outer_cv.split(X,y)):
-        X_train, X_test = X[train_index_outer, :], X[test_index_outer, :]
-        y_train, y_test = y[train_index_outer], y[test_index_outer]
+        X_train, X_test = X[:train_index_outer.shape[0]], X[:test_index_outer.shape[0]]
+        y_train, y_test = y[:train_index_outer.shape[0]], y[:test_index_outer.shape[0]]
+        outer_cv.random_state=i+1
         
-        #For integer/None inputs, if classifier is True and y is either
-        #binary or multiclass, StratifiedKFold is used.
-        #In all other cases, KFold is used.
-        cv_strategy = check_cv(inner_cv, y_train, classifier=is_classifier(estimator))
-        
+        inner_loop_scores = []
+        inner_loop_params = []
+        print(X_train.shape[0],y_train.shape[0],X_test.shape[0],y_test.shape[0])
         for j, (train_index_inner, test_index_inner) in enumerate(cv_strategy.split(X_train,y_train)):
-            X_train_val, X_test_val = X_train[train_index_inner, :], X_train[test_index_inner, :]
-            y_train_val, y_test_val = y_train[train_index_inner], y_train[test_index_inner]
+            X_train_val, X_test_val = X_train[:train_index_inner.shape[0]], X_train[:test_index_inner.shape[0]]
+            y_train_val, y_test_val = y_train[:train_index_inner.shape[0]], y_train[:test_index_inner.shape[0]]
+            inner_cv.random_state=j+1
             
-            #hhttps://github.com/scikit-learn/scikit-learn/blob/0.21.X/sklearn/model_selection/_validation.py#L393
-            testing = _fit_and_score(estimator=clone(estimator),
-                                 X=X_train_val, y=y_train_val,
-                                 scorer=scoring, train=train_index_inner,
-                                 test=test_index_inner, fit_parameters=param_grid)
+            print(X_train_val.shape[0],y_train_val.shape[0],X_test_val.shape[0],y_test_val.shape[0])
+            model = estimator
+            model.fit(X_train_val,y_train_val)
+            pred = model.predict(X_test_val)
+            
+            inner_loop_scores.append(scoring(y_test_val,pred))
+            inner_loop_params.append(model.get_params())
+            
+        print(inner_loop_scores)
+        #print(inner_loop_params)
         
 
 X,X_test,y = data_engineering(train,test)
 
-estimator = RandomForestRegressor()
+rf = RandomForestRegressor(n_estimators=10)
 
-param_grid = {'max_depth': [3, None],
-              'n_estimators': (10, 20)#, 30, 50, 100, 200, 400, 600, 800, 1000)
-}
+#For integer/None inputs, if classifier is True and y is either binary or multiclass,
+#StratifiedKFold is used. In all other cases, KFold is used.
+cv_strategy = check_cv(5, y, classifier=is_classifier(rf))
 
-nested_cv = NestedGridSearchCV(estimator, param_grid, 'neg_mean_squared_error',
-                               cv=3, inner_cv=3)
-nested_cv.fit(X, y)
+outer_kf = KFold(n_splits=5,shuffle=True)
+inner_kf = KFold(n_splits=5,shuffle=True)
 
-if MPI.COMM_WORLD.Get_rank() == 0:
-    for i, scores in enumerate(nested_cv.grid_scores_):
-        scores.to_csv('grid-scores-%d.csv' % (i + 1), index=False)
+outer_loop_accuracy_scores = []
+inner_loop_won_params = []
+inner_loop_accuracy_scores = []
 
-    print(nested_cv.best_params_)
+model = RandomForestRegressor()
+params = {'max_depth': [3, None],
+          'n_estimators': (10, 20)#, 30, 50, 100, 200, 400, 600, 800, 1000)
+          }
+features=X
+target=y
+
+# Looping through the outer loop, feeding each training set into a GSCV as the inner loop
+for train_index,test_index in outer_kf.split(features,target):
+    GSCV = GridSearchCV(estimator=model,param_grid=params,cv=inner_kf)
+    
+    # GSCV is looping through the training data to find the best parameters. This is the inner loop
+    GSCV.fit(features[:train_index.shape[0]],target[:train_index.shape[0]])
+    
+    # The best hyper parameters from GSCV is now being tested on the unseen outer loop test data.
+    pred = GSCV.predict(features[:test_index.shape[0]])
+    
+    # Appending the "winning" hyper parameters and their associated accuracy score
+    inner_loop_won_params.append(GSCV.best_params_)
+    outer_loop_accuracy_scores.append(mean_squared_error(target[:test_index.shape[0]],pred))
+    inner_loop_accuracy_scores.append(GSCV.best_score_)
+
+for i in zip(inner_loop_won_params,outer_loop_accuracy_scores,inner_loop_accuracy_scores):
+    print(i)
+
+print('Mean of outer loop accuracy score:',np.mean(outer_loop_accuracy_scores))
+
+#nested_grid_search(X=X,y=y,estimator=rf,param_grid=None,scoring=mean_squared_log_error,outer_cv=cv_strategy,inner_cv=cv_strategy)
+
 
 '''
 NUM_TRIALS = 30

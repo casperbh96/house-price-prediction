@@ -37,7 +37,7 @@ def data_engineering(train, test):
     cc_data = pd.concat([train, test], sort=True)
     cc_data = cc_data.drop(['Id', 'SalePrice','Alley', 'FireplaceQu', 'PoolQC', 'Fence', 'MiscFeature'], axis=1)
     
-    #train["SalePrice"] = np.log1p(train["SalePrice"])
+    train["SalePrice"] = np.log1p(train["SalePrice"])
     y = train['SalePrice']
     
     cc_data = pd.get_dummies(cc_data, prefix_sep='_')
@@ -78,17 +78,19 @@ def nested_grid_search(X,y,estimator, param_grid, scoring=mean_squared_error, ou
 X,X_test,y = data_engineering(train,test)
 
 rf = RandomForestRegressor(n_estimators=10)
+outer_inner_splits = 5
+
 
 #For integer/None inputs, if classifier is True and y is either binary or multiclass,
 #StratifiedKFold is used. In all other cases, KFold is used.
-cv_strategy = check_cv(5, y, classifier=is_classifier(rf))
+cv_strategy = check_cv(outer_inner_splits, y, classifier=is_classifier(rf))
 
 outer_kf = KFold(n_splits=5,shuffle=True)
 inner_kf = KFold(n_splits=5,shuffle=True)
 
-outer_loop_accuracy_scores = []
+outer_loop_MSE_scores = []
+inner_loop_MSE_scores = []
 inner_loop_won_params = []
-inner_loop_accuracy_scores = []
 
 model = RandomForestRegressor()
 params = {'max_depth': [3, None],
@@ -98,8 +100,9 @@ features=X
 target=y
 
 # Looping through the outer loop, feeding each training set into a GSCV as the inner loop
-for train_index,test_index in outer_kf.split(features,target):
-    GSCV = GridSearchCV(estimator=model,param_grid=params,cv=inner_kf)
+for (i, (train_index,test_index)) in enumerate(outer_kf.split(features,target)):
+    print('\n{0}/{1} <-- Current outer fold'.format(i+1,outer_inner_splits))
+    GSCV = GridSearchCV(estimator=model,param_grid=params,scoring='neg_mean_squared_error',cv=inner_kf)
     
     # GSCV is looping through the training data to find the best parameters. This is the inner loop
     GSCV.fit(features[:train_index.shape[0]],target[:train_index.shape[0]])
@@ -109,13 +112,13 @@ for train_index,test_index in outer_kf.split(features,target):
     
     # Appending the "winning" hyper parameters and their associated accuracy score
     inner_loop_won_params.append(GSCV.best_params_)
-    outer_loop_accuracy_scores.append(mean_squared_error(target[:test_index.shape[0]],pred))
-    inner_loop_accuracy_scores.append(GSCV.best_score_)
+    outer_loop_MSE_scores.append(mean_squared_error(target[:test_index.shape[0]],pred))
+    inner_loop_MSE_scores.append(-GSCV.best_score_)
 
-for i in zip(inner_loop_won_params,outer_loop_accuracy_scores,inner_loop_accuracy_scores):
+for i in zip(inner_loop_won_params,np.sqrt(outer_loop_MSE_scores),np.sqrt(inner_loop_MSE_scores)):
     print(i)
 
-print('Mean of outer loop accuracy score:',np.mean(outer_loop_accuracy_scores))
+print('Mean of outer loop MSE score:',np.mean(outer_loop_MSE_scores))
 
 #nested_grid_search(X=X,y=y,estimator=rf,param_grid=None,scoring=mean_squared_log_error,outer_cv=cv_strategy,inner_cv=cv_strategy)
 

@@ -15,11 +15,10 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import GridSearchCV, cross_val_score, KFold
 import numpy as np
 from sklearn.metrics import mean_squared_error,mean_squared_log_error
-from grid_search import NestedGridSearchCV
-from mpi4py import MPI
 from sklearn.model_selection import check_cv
 from sklearn.base import is_classifier
 from sklearn.model_selection._validation import _fit_and_score
+from sklearn import linear_model
 
 train = pd.read_csv('./data/train.csv')
 test = pd.read_csv('./data/test.csv')
@@ -73,9 +72,12 @@ def nested_grid_search(X,y,estimator, param_grid, scoring=mean_squared_error, ou
             
         print(inner_loop_scores)
         #print(inner_loop_params)
-        
+
+def f(x):
+    return np.exp(-x ** 2) + 1.5 * np.exp(-(x - 2) ** 2)
 
 X,X_test,y = data_engineering(train,test)
+
 
 rf = RandomForestRegressor(n_estimators=10)
 outer_inner_splits = 5
@@ -99,6 +101,9 @@ params = {'max_depth': [3, None],
 features=X
 target=y
 
+variance = []
+bias = []
+
 # Looping through the outer loop, feeding each training set into a GSCV as the inner loop
 for (i, (train_index,test_index)) in enumerate(outer_kf.split(features,target)):
     print('\n{0}/{1} <-- Current outer fold'.format(i+1,outer_inner_splits))
@@ -110,6 +115,10 @@ for (i, (train_index,test_index)) in enumerate(outer_kf.split(features,target)):
     # The best hyper parameters from GSCV is now being tested on the unseen outer loop test data.
     pred = GSCV.predict(features[:test_index.shape[0]])
     
+    # Appending variance and bias
+    variance.append(np.var(pred))
+    bias.append((f(X_test.values)-np.mean(pred))**2)
+    
     # Appending the "winning" hyper parameters and their associated accuracy score
     inner_loop_won_params.append(GSCV.best_params_)
     outer_loop_MSE_scores.append(mean_squared_error(target[:test_index.shape[0]],pred))
@@ -120,9 +129,27 @@ for i in zip(inner_loop_won_params,np.sqrt(outer_loop_MSE_scores),np.sqrt(inner_
 
 print('Mean of outer loop MSE score:',np.mean(outer_loop_MSE_scores))
 
+for i in range(5):
+    bias[i] = np.mean(bias[i])
+    print('Bias for fold {0}:         {1}'.format(i+1,bias[i]))
+    print('Variance for fold {0}:     {1}'.format(i+1,variance[i]))
+
+# Plot scores on each trial for nested and non-nested CV
+plt.figure()
+plt.subplot(211)
+
+variance, = plt.plot(variance,color='g')
+bias, = plt.plot(bias, color='r')
+score, = plt.plot(outer_loop_MSE_scores, color='b')
+
+plt.legend([variance, bias, score],
+           ["Variance", "Bias", "Score"],
+           bbox_to_anchor=(0, .4, .5, 0))
+
+plt.title("Random Forest Score VS Bias VS Variance",
+          x=.5, y=1.1, fontsize="15")
+
 #nested_grid_search(X=X,y=y,estimator=rf,param_grid=None,scoring=mean_squared_log_error,outer_cv=cv_strategy,inner_cv=cv_strategy)
-
-
 '''
 NUM_TRIALS = 30
 
@@ -171,7 +198,7 @@ for outer_fold, (train_index_outer, test_index_outer) in enumerate(outer.split(X
     X_train_outer, X_test_outer = X[:train_index_outer.shape[0]], X[:test_index_outer.shape[0]]
     y_train_outer, y_test_outer = y[:train_index_outer.shape[0]], y[:test_index_outer.shape[0]]
 
-    estimators = (10,20,30,200)
+    estimators = (10,20,30)#,200)
     features = [3,5,7]
     for estimator in estimators:
         for feature in features:
@@ -182,6 +209,8 @@ for outer_fold, (train_index_outer, test_index_outer) in enumerate(outer.split(X
                 
                 clf = ensemble.RandomForestRegressor(n_estimators=estimator, max_features=feature, n_jobs=-1, random_state=1)
                 clf.fit(X_train_inner, y_train_inner)
+                #pred = clf.predict(X_test_inner)
+                #scores.append(mean_squared_error(y_test_inner,pred))
                 scores.append(clf.score(X_test_inner, y_test_inner))
     
     # calculate mean score for folds

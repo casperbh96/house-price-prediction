@@ -48,40 +48,10 @@ def data_engineering(train, test):
     
     return X_train,X_test,y
 
-def nested_grid_search(X,y,estimator, param_grid, scoring=mean_squared_error, outer_cv=None, inner_cv=None):
-    for i, (train_index_outer, test_index_outer) in enumerate(outer_cv.split(X,y)):
-        X_train, X_test = X[:train_index_outer.shape[0]], X[:test_index_outer.shape[0]]
-        y_train, y_test = y[:train_index_outer.shape[0]], y[:test_index_outer.shape[0]]
-        outer_cv.random_state=i+1
-        
-        inner_loop_scores = []
-        inner_loop_params = []
-        print(X_train.shape[0],y_train.shape[0],X_test.shape[0],y_test.shape[0])
-        for j, (train_index_inner, test_index_inner) in enumerate(cv_strategy.split(X_train,y_train)):
-            X_train_val, X_test_val = X_train[:train_index_inner.shape[0]], X_train[:test_index_inner.shape[0]]
-            y_train_val, y_test_val = y_train[:train_index_inner.shape[0]], y_train[:test_index_inner.shape[0]]
-            inner_cv.random_state=j+1
-            
-            print(X_train_val.shape[0],y_train_val.shape[0],X_test_val.shape[0],y_test_val.shape[0])
-            model = estimator
-            model.fit(X_train_val,y_train_val)
-            pred = model.predict(X_test_val)
-            
-            inner_loop_scores.append(scoring(y_test_val,pred))
-            inner_loop_params.append(model.get_params())
-            
-        print(inner_loop_scores)
-        #print(inner_loop_params)
-
-def f(x):
-    return np.exp(-x ** 2) + 1.5 * np.exp(-(x - 2) ** 2)
-
 X,X_test,y = data_engineering(train,test)
-
 
 rf = RandomForestRegressor(n_estimators=10)
 outer_inner_splits = 5
-
 
 #For integer/None inputs, if classifier is True and y is either binary or multiclass,
 #StratifiedKFold is used. In all other cases, KFold is used.
@@ -98,30 +68,29 @@ model = RandomForestRegressor()
 params = {'max_depth': [3, None],
           'n_estimators': (10, 20)#, 30, 50, 100, 200, 400, 600, 800, 1000)
           }
-features=X
-target=y
 
 variance = []
-bias = []
 
 # Looping through the outer loop, feeding each training set into a GSCV as the inner loop
-for (i, (train_index,test_index)) in enumerate(outer_kf.split(features,target)):
+for (i, (train_index,test_index)) in enumerate(outer_kf.split(X,y)):
     print('\n{0}/{1} <-- Current outer fold'.format(i+1,outer_inner_splits))
+    X_train_outer, X_test_outer = X.iloc[train_index], X.iloc[test_index]
+    y_train_outer, y_test_outer = y.iloc[train_index], y.iloc[test_index]
+    
     GSCV = GridSearchCV(estimator=model,param_grid=params,scoring='neg_mean_squared_error',cv=inner_kf)
     
     # GSCV is looping through the training data to find the best parameters. This is the inner loop
-    GSCV.fit(features[:train_index.shape[0]],target[:train_index.shape[0]])
+    GSCV.fit(X_train_outer,y_train_outer)
     
     # The best hyper parameters from GSCV is now being tested on the unseen outer loop test data.
-    pred = GSCV.predict(features[:test_index.shape[0]])
+    pred = GSCV.predict(X_test_outer)
     
-    # Appending variance and bias
+    # Appending variance
     variance.append(np.var(pred))
-    bias.append((f(X_test.values)-np.mean(pred))**2)
     
     # Appending the "winning" hyper parameters and their associated accuracy score
     inner_loop_won_params.append(GSCV.best_params_)
-    outer_loop_MSE_scores.append(mean_squared_error(target[:test_index.shape[0]],pred))
+    outer_loop_MSE_scores.append(mean_squared_error(y_test_outer,pred))
     inner_loop_MSE_scores.append(-GSCV.best_score_)
 
 for i in zip(inner_loop_won_params,np.sqrt(outer_loop_MSE_scores),np.sqrt(inner_loop_MSE_scores)):
@@ -130,26 +99,22 @@ for i in zip(inner_loop_won_params,np.sqrt(outer_loop_MSE_scores),np.sqrt(inner_
 print('Mean of outer loop MSE score:',np.mean(outer_loop_MSE_scores))
 
 for i in range(5):
-    bias[i] = np.mean(bias[i])
-    print('Bias for fold {0}:         {1}'.format(i+1,bias[i]))
     print('Variance for fold {0}:     {1}'.format(i+1,variance[i]))
 
 # Plot scores on each trial for nested and non-nested CV
 plt.figure()
 plt.subplot(211)
 
-variance, = plt.plot(variance,color='g')
-bias, = plt.plot(bias, color='r')
+variance_plot, = plt.plot(variance,color='r')
 score, = plt.plot(outer_loop_MSE_scores, color='b')
 
-plt.legend([variance, bias, score],
-           ["Variance", "Bias", "Score"],
+plt.legend([variance_plot, score],
+           ["Variance", "Score"],
            bbox_to_anchor=(0, .4, .5, 0))
 
-plt.title("Random Forest Score VS Bias VS Variance",
+plt.title("Random Forest Score VS Variance",
           x=.5, y=1.1, fontsize="15")
 
-#nested_grid_search(X=X,y=y,estimator=rf,param_grid=None,scoring=mean_squared_log_error,outer_cv=cv_strategy,inner_cv=cv_strategy)
 '''
 NUM_TRIALS = 30
 

@@ -78,7 +78,7 @@ for (i, (train_index,test_index)) in enumerate(outer_kf.split(X,y)):
     X_train_outer, X_test_outer = X.iloc[train_index], X.iloc[test_index]
     y_train_outer, y_test_outer = y.iloc[train_index], y.iloc[test_index]
     
-    GSCV = GridSearchCV(estimator=model,param_grid=params,scoring='neg_mean_squared_error',cv=inner_kf)
+    GSCV = GridSearchCV(estimator=model,param_grid=params,scoring='neg_mean_squared_error',cv=inner_kf,n_jobs=-1)
     
     # GSCV is looping through the training data to find the best parameters. This is the inner loop
     GSCV.fit(X_train_outer,y_train_outer)
@@ -97,7 +97,7 @@ for (i, (train_index,test_index)) in enumerate(outer_kf.split(X,y)):
 for i in zip(inner_loop_won_params,np.sqrt(outer_loop_MSE_scores),np.sqrt(inner_loop_MSE_scores)):
     print(i)
 
-print('Mean of outer loop MSE score:',np.mean(outer_loop_MSE_scores))
+print('Mean of outer loop MSE score:',np.sqrt(np.mean(outer_loop_MSE_scores)))
 
 for i in range(5):
     print('Variance for fold {0}:     {1}'.format(i+1,variance[i]))
@@ -113,7 +113,7 @@ plt.legend([variance_plot, score],
            ["Variance", "Score"],
            bbox_to_anchor=(0, .4, .5, 0))
 
-plt.title("Random Forest Score VS Variance",
+plt.title("{0}: Score VS Variance".format(type(model).__name__),
           x=.5, y=1.1, fontsize="15")
 
 '''

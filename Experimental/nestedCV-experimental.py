@@ -96,7 +96,7 @@ for (i, (train_index,test_index)) in enumerate(outer_kf.split(X,y)):
 for i in zip(inner_loop_won_params,np.sqrt(outer_loop_MSE_scores),np.sqrt(inner_loop_MSE_scores)):
     print(i)
 
-print('Mean of outer loop MSE score:',np.mean(outer_loop_MSE_scores))
+print('Mean of outer loop MSE score:',np.sqrt(np.mean(outer_loop_MSE_scores)))
 
 for i in range(5):
     print('Variance for fold {0}:     {1}'.format(i+1,variance[i]))
@@ -112,7 +112,7 @@ plt.legend([variance_plot, score],
            ["Variance", "Score"],
            bbox_to_anchor=(0, .4, .5, 0))
 
-plt.title("Random Forest Score VS Variance",
+plt.title("{0}: Score VS Variance".format(type(model).__name__),
           x=.5, y=1.1, fontsize="15")
 
 '''

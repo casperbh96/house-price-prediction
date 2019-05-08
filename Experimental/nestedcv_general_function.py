@@ -43,7 +43,8 @@ def data_engineering(train, test):
 
 def multiple_nested_cv(X_df, y_df, models, params_grid, outer_kfolds, 
                        inner_kfolds, outer_metric = mean_squared_error,
-                       inner_metric = 'neg_mean_squared_error'):
+                       inner_metric = 'neg_mean_squared_error',
+                       sqrt_of_score = False):
     outer_cv = KFold(n_splits=outer_kfolds,shuffle=True)
     inner_cv = KFold(n_splits=inner_kfolds,shuffle=True)
     
@@ -55,9 +56,7 @@ def multiple_nested_cv(X_df, y_df, models, params_grid, outer_kfolds,
     variance = []
     
     for index, model in enumerate(models):
-        print(type(model).__name__)
-        print(index)
-        print(params_grid[index])
+        print('\n{0} <-- Running this model now'.format(type(model).__name__))
         
         if(index >= 1):
             outer_score = []
@@ -84,8 +83,13 @@ def multiple_nested_cv(X_df, y_df, models, params_grid, outer_kfolds,
             
             # Append best dict of parameters from hyperparameters
             inner_params.append(GSCV.best_params_)
-            inner_score.append(-GSCV.best_score_)
-            outer_score.append(outer_metric(y_test_outer,pred))
+            
+            if sqrt_of_score:
+                inner_score.append(np.sqrt(-GSCV.best_score_))
+                outer_score.append(np.sqrt(outer_metric(y_test_outer,pred)))
+            else:
+                inner_score.append(-GSCV.best_score_)
+                outer_score.append(outer_metric(y_test_outer,pred))
             
             print('Best parameters was: {0}'.format(inner_params[i]))
             print('Outer score: {0}'.format(outer_score[i]))
@@ -105,19 +109,22 @@ def multiple_nested_cv(X_df, y_df, models, params_grid, outer_kfolds,
         plt.title("{0}: Score VS Variance".format(type(model).__name__),
                   x=.5, y=1.1, fontsize="15")
         
-        all_params_all_scores.append([zip(inner_params,outer_score,inner_score)])
+        all_params_all_scores.append([inner_params,outer_score,inner_score])
     
     return all_params_all_scores
 
 X,X_test,y = data_engineering(train,test)
 
-models_to_run = [RandomForestRegressor(), xgb.XGBRegressor()]
-models_param_grid = [{'max_depth': [3, None], 
-                      'n_estimators': (10, 20)},
+models_to_run = [xgb.XGBRegressor(), RandomForestRegressor()]
+models_param_grid = [   # 1st param grid, corresponding to XGBRegressor
                      {'colsample_bytree': np.linspace(0.3, 0.5),
                       'n_estimators':(10, 20)
-                     }]
+                     }, # 2nd param grid, corresponding to RandomForestRegressor
+                     {'max_depth': [3, None], 
+                      'n_estimators': (10, 20)
+                     }
+                    ]
 
 model_results = multiple_nested_cv(X_df=X, y_df=y, models=models_to_run, 
                                    params_grid=models_param_grid,
-                                   outer_kfolds=5, inner_kfolds=5)
+                                   outer_kfolds=5, inner_kfolds=5,sqrt_of_score=True)

@@ -118,7 +118,7 @@ X,X_test,y = data_engineering(train,test)
 models_to_run = [xgb.XGBRegressor(), RandomForestRegressor()]
 models_param_grid = [   # 1st param grid, corresponding to XGBRegressor
                      {'colsample_bytree': np.linspace(0.3, 0.5),
-                      'n_estimators':(10, 20)
+                      'n_estimators':(10, 20, 500)
                      }, # 2nd param grid, corresponding to RandomForestRegressor
                      {'max_depth': [3, None], 
                       'n_estimators': (10, 20)

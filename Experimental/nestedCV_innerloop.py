@@ -13,6 +13,8 @@ from sklearn.model_selection import GridSearchCV, KFold, ParameterGrid, Paramete
 import numpy as np
 from sklearn.metrics import mean_squared_error
 import xgboost as xgb
+import lightgbm as lgb
+from nested_cv import nested_cv
 
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -54,6 +56,7 @@ def multiple_nested_cv(X_df, y_df, models, params_grid, outer_kfolds,
     
     outer_score = []
     variance = []
+    model_params_and_outer_scores = []
     
     for index, model in enumerate(models):
         print('\n{0} <-- Running this model now'.format(type(model).__name__))
@@ -79,7 +82,6 @@ def multiple_nested_cv(X_df, y_df, models, params_grid, outer_kfolds,
                     model.set_params(**param_dict)
                     model.fit(X_train_inner,y_train_inner)
                     inner_pred = model.predict(X_test_inner)
-                    print(param_dict)
                     internal_grid_score = metric(y_test_inner,inner_pred)
                     if best_score == None or internal_grid_score < best_score:
                         if sqrt_of_score:
@@ -109,11 +111,13 @@ def multiple_nested_cv(X_df, y_df, models, params_grid, outer_kfolds,
                 outer_score.append(metric(y_test_outer,pred))
             
             # Append variance
-            variance.append(np.var(pred))
+            variance.append(np.var(pred,ddof=1))
             
-            print('Best parameters was: {0}'.format(best_inner_grid))
+            print('Best inner parameters was: {0}'.format(best_inner_grid))
             print('Outer score: {0}'.format(outer_score[i]))
             print('Inner score: {0}'.format(best_inner_score))
+        
+        model_params_and_outer_scores.append([best_inner_grid,outer_score,best_inner_score])
         
         # Plot score vs variance
         plt.figure()
@@ -128,22 +132,30 @@ def multiple_nested_cv(X_df, y_df, models, params_grid, outer_kfolds,
         
         plt.title("{0}: Score VS Variance".format(type(model).__name__),
                   x=.5, y=1.1, fontsize="15")
+    
+    return model_params_and_outer_scores
 
 X,X_test,y = data_engineering(train,test)
 
-models_to_run = [RandomForestRegressor(), xgb.XGBRegressor()]
+models_to_run = [RandomForestRegressor(), xgb.XGBRegressor(), lgb.LGBMRegressor()]
 models_param_grid = [ # 1st param grid, corresponding to RandomForestRegressor
                     {
                             'max_depth': [3, None],
-                            'n_estimators': np.random.randint(100,1000,10)
+                            'n_estimators': np.random.randint(10,20,20)
                     }, 
                     { # 2nd param grid, corresponding to XGBRegressor
                             'colsample_bytree': np.linspace(0.3, 0.5),
-                            'n_estimators': np.random.randint(100,1000,10)
+                            'n_estimators': np.random.randint(10,20,20)
+                    },
+                    {
+                    'learning_rate': [0.05],
+                    'n_estimators': np.random.randint(10,20,20),
+                    'num_leaves': np.random.randint(10,30,10),
+                    'reg_alpha' : (1,1.2),
+                    'reg_lambda' : (1,1.2,1.4)
                     }
                     ]
 
-multiple_nested_cv(X_df=X, y_df=y, models=models_to_run, 
-                                   params_grid=models_param_grid,
-                                   outer_kfolds=5, inner_kfolds=5,sqrt_of_score=True,
-                                   randomized_search = True, randomized_search_iter = 50)
+returnarray = nested_cv(X=X, y=y, models=models_to_run, params_grid=models_param_grid,
+                       outer_kfolds=5, inner_kfolds=5, sqrt_of_score = True, 
+                       randomized_search_iter = 20)

@@ -79,7 +79,7 @@ def multiple_nested_cv(X_df, y_df, models, params_grid, outer_kfolds,
                     model.set_params(**param_dict)
                     model.fit(X_train_inner,y_train_inner)
                     inner_pred = model.predict(X_test_inner)
-                    
+                    print(param_dict)
                     internal_grid_score = metric(y_test_inner,inner_pred)
                     if best_score == None or internal_grid_score < best_score:
                         if sqrt_of_score:
@@ -135,11 +135,11 @@ models_to_run = [RandomForestRegressor(), xgb.XGBRegressor()]
 models_param_grid = [ # 1st param grid, corresponding to RandomForestRegressor
                     {
                             'max_depth': [3, None],
-                            'n_estimators': (10,20)
+                            'n_estimators': np.random.randint(100,1000,10)
                     }, 
                     { # 2nd param grid, corresponding to XGBRegressor
                             'colsample_bytree': np.linspace(0.3, 0.5),
-                            'n_estimators':(10, 20)
+                            'n_estimators': np.random.randint(100,1000,10)
                     }
                     ]
 

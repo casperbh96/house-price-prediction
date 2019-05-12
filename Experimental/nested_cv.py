@@ -10,7 +10,6 @@ def nested_cv(X, y, model, params_grid, outer_kfolds,
                        randomized_search = True, randomized_search_iter = 10):
     '''A general method to handle nested cross-validation for any estimator that
     implements the scikit-learn estimator interface.
-
     Parameters
     ----------
     X : pandas dataframe (rows, columns)
@@ -20,7 +19,7 @@ def nested_cv(X, y, model, params_grid, outer_kfolds,
     y : pandas dataframe
         Output dataframe, also called output variable. y is what you want to predict.
         
-    model : a single estimator
+    model : estimator
         The estimator implements scikit-learn estimator interface.
         
     params_grid : dict
@@ -46,31 +45,27 @@ def nested_cv(X, y, model, params_grid, outer_kfolds,
         
     randomized_search_iter : int, default = 10
         Number of iterations for randomized search
-
+        
     Returns
     -------
-    best_inner_grid 
-            Best Inner Params.
-    outer_score
-            Outer Score List.
-    best_inner_score
-            Best Inner score.
+    outer_scores
+         Outer Score List.
+         
+    best_inner_score_list
+         Best inner scores for each outer loop
+         
+    best_inner_params_list
+         Best inner params for each outer loop
     '''
+    print('\n{0} <-- Running this model now'.format(type(model).__name__))
     outer_cv = KFold(n_splits=outer_kfolds,shuffle=True)
     inner_cv = KFold(n_splits=inner_kfolds,shuffle=True)
-
-    def score_to_best_params(best_score_params):	       
-        for key,value in best_score_params.items():	        
-            if key in best_params :	
-                 if value not in best_params[key]:	        
-                    best_params[key].append(value)	    
-            else:	
-                best_params[key] = [value]
-            
-    outer_score = []
+    
+    outer_scores = []
     variance = []
-    best_params = {}
-    best_inner_score = None
+    best_inner_params_list = []
+    best_inner_score_list = []
+    
     
     # Split X and y into K-partitions
     for (i, (train_index,test_index)) in enumerate(outer_cv.split(X,y)):
@@ -79,6 +74,8 @@ def nested_cv(X, y, model, params_grid, outer_kfolds,
         y_train_outer, y_test_outer = y.iloc[train_index], y.iloc[test_index]
         inner_params = []
         inner_scores = []
+        best_inner_params = {}
+        best_inner_score = None
         
         # Split X_train_outer and y_train_outer into K-partitions
         for (j, (train_index_inner,test_index_inner)) in enumerate (inner_cv.split(X_train_outer,y_train_outer)):
@@ -87,10 +84,9 @@ def nested_cv(X, y, model, params_grid, outer_kfolds,
             y_train_inner, y_test_inner = y_train_outer.iloc[train_index_inner], y_train_outer.iloc[test_index_inner]
             best_score = None
             best_grid = {}
-            best_inner_grid = {}
-
+            
             # Run either RandomizedSearch or GridSearch for input parameters
-            for param_dict in ParameterSampler(param_distributions=params_grid, n_iter=randomized_search_iter) if randomized_search else ParameterGrid(param_grid=params_grid):
+            for param_dict in ParameterSampler(param_distributions=params_grid,n_iter=randomized_search_iter) if randomized_search else ParameterGrid(param_grid=params_grid):
                 # Set parameters, train model on inner split, predict results.
                 model.set_params(**param_dict)
                 model.fit(X_train_inner,y_train_inner)
@@ -98,7 +94,7 @@ def nested_cv(X, y, model, params_grid, outer_kfolds,
                 internal_grid_score = metric(y_test_inner,inner_pred)
                 
                 # Find best score and corresponding best grid
-                if (best_score is None or internal_grid_score < best_score) and lower_score_is_better:
+                if (best_score == None or internal_grid_score < best_score) and (lower_score_is_better):
                     if sqrt_of_score:
                         best_score = np.sqrt(internal_grid_score)
                     else:
@@ -115,46 +111,46 @@ def nested_cv(X, y, model, params_grid, outer_kfolds,
             inner_params.append(best_grid)
             inner_scores.append(best_score)
         
-        # Look through all inner scores, select the lowest one
+        # Look through all inner scores, select the best one
         for idx, score in enumerate(inner_scores):
-            if (best_inner_score is None or score < best_inner_score) and (lower_score_is_better):
+            if (best_inner_score == None or score < best_inner_score) and (lower_score_is_better):
                 best_inner_score = score
-                best_inner_grid = inner_params[idx]
-            elif (best_inner_score is None or score > best_inner_score) and (not lower_score_is_better):
+                best_inner_params = inner_params[idx]
+            elif (best_inner_score == None or score > best_inner_score) and (not lower_score_is_better):
                 best_inner_score = score
-                best_inner_grid = inner_params[idx]
+                best_inner_params = inner_params[idx]
+        
+        best_inner_params_list.append(best_inner_params)
+        best_inner_score_list.append(best_inner_score)
         
         # Train model with best inner parameters on the outer split
-        model.set_params(**best_inner_grid)
+        model.set_params(**best_inner_params)
         model.fit(X_train_outer,y_train_outer)
         pred = model.predict(X_test_outer)
         
         if sqrt_of_score:
-            outer_score.append(np.sqrt(metric(y_test_outer,pred)))
+            outer_scores.append(np.sqrt(metric(y_test_outer,pred)))
         else:
-            outer_score.append(metric(y_test_outer,pred))
+            outer_scores.append(metric(y_test_outer,pred))
         
         # Append variance
         variance.append(np.var(pred,ddof=1))
-        score_to_best_params(best_inner_grid)
-
-        print('\nResults for outer fold:\nBest inner parameters was: {0}'.format(best_inner_grid))
-        print('Outer score: {0}'.format(outer_score[i]))
-        print('Inner score: {0}'.format(best_inner_score))
-    
+        print('\nResults for outer fold:\nBest inner parameters was: {0}'.format(best_inner_params_list[i]))
+        print('Outer score: {0}'.format(outer_scores[i]))
+        print('Inner score: {0}'.format(best_inner_score_list[i]))
     
     # Plot score vs variance
     plt.figure()
     plt.subplot(211)
     
-    variance_plot, = plt.plot(variance,color='r')
-    score, = plt.plot(outer_score, color='b')
+    variance_plot, = plt.plot(variance,color='b')
+    score_plot, = plt.plot(outer_scores, color='r')
     
-    plt.legend([variance_plot, score],
-                ["Variance", "Score"],
-                bbox_to_anchor=(0, .4, .5, 0))
+    plt.legend([variance_plot, score_plot],
+               ["Variance", "Score"],
+               bbox_to_anchor=(0, .4, .5, 0))
     
     plt.title("{0}: Score VS Variance".format(type(model).__name__),
-                x=.5, y=1.1, fontsize="15")
+              x=.5, y=1.1, fontsize="15")
     
-    return best_params, outer_score, best_inner_score
+    return outer_scores, best_inner_score_list, best_inner_params_list

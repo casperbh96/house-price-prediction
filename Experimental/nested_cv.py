@@ -3,11 +3,13 @@ from matplotlib import pyplot as plt
 from sklearn.model_selection import KFold, ParameterGrid, ParameterSampler
 import numpy as np
 from sklearn.metrics import mean_squared_error
+from sklearn.feature_selection import RFE, RFECV
 
 def nested_cv(X, y, model, params_grid, outer_kfolds, 
                        inner_kfolds, metric = mean_squared_error,
                        lower_score_is_better = True, sqrt_of_score = False, 
-                       randomized_search = True, randomized_search_iter = 10):
+                       randomized_search = True, randomized_search_iter = 10,
+                       do_recursive_feature_elimination = False):
     '''A general method to handle nested cross-validation for any estimator that
     implements the scikit-learn estimator interface.
     Parameters
@@ -45,6 +47,9 @@ def nested_cv(X, y, model, params_grid, outer_kfolds,
         
     randomized_search_iter : int, default = 10
         Number of iterations for randomized search
+        
+    do_recursive_feature_elimination : boolean, default = False
+        Whether to do feature elimination
         
     Returns
     -------
@@ -123,10 +128,22 @@ def nested_cv(X, y, model, params_grid, outer_kfolds,
         best_inner_params_list.append(best_inner_params)
         best_inner_score_list.append(best_inner_score)
         
-        # Train model with best inner parameters on the outer split
-        model.set_params(**best_inner_params)
-        model.fit(X_train_outer,y_train_outer)
-        pred = model.predict(X_test_outer)
+        if do_recursive_feature_elimination:
+            print('\nRunning recursive feature elimination for outer loop...')
+            
+            # K-fold (inner_kfolds) recursive feature elimination
+            rfe = RFECV(estimator=model, min_features_to_select=20, scoring='neg_mean_squared_error', cv=inner_kfolds,n_jobs=-1)
+            rfe.fit(X_train_outer,y_train_outer)
+            
+            # Assign selected features to data
+            print('Best number of features was: {0}'.format(rfe.n_features_))
+            X_train_outer_rfe = rfe.transform(X_train_outer)
+            X_test_outer_rfe = rfe.transform(X_test_outer)
+            
+            # Train model with best inner parameters on the outer split
+            model.set_params(**best_inner_params)
+            model.fit(X_train_outer_rfe,y_train_outer)
+            pred = model.predict(X_test_outer_rfe)
         
         if sqrt_of_score:
             outer_scores.append(np.sqrt(metric(y_test_outer,pred)))

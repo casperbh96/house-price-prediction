@@ -146,11 +146,8 @@ def nested_cv(X, y, model, params_grid, outer_kfolds,
             model.fit(X_train_outer_rfe, y_train_outer)
             pred = model.predict(X_test_outer_rfe)
 
-        if sqrt_of_score:
-            outer_scores.append(np.sqrt(metric(y_test_outer, pred)))
-        else:
-            outer_scores.append(metric(y_test_outer, pred))
-
+        outer_scores.append(transform_score_format(metric(y_test_outer, pred)))
+        
         # Append variance
         variance.append(np.var(pred, ddof=1))
         print('\nResults for outer fold:\nBest inner parameters was: {0}'.format(

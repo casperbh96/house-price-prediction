@@ -92,8 +92,6 @@ def nested_cv(X, y, model, params_grid, outer_kfolds,
         print('\n{0}/{1} <-- Current outer fold'.format(i+1, outer_kfolds))
         X_train_outer, X_test_outer = X.iloc[train_index], X.iloc[test_index]
         y_train_outer, y_test_outer = y.iloc[train_index], y.iloc[test_index]
-        inner_params = []
-        inner_scores = []
         best_inner_params = {}
         best_inner_score = None
 
@@ -104,8 +102,6 @@ def nested_cv(X, y, model, params_grid, outer_kfolds,
                 train_index_inner], X_train_outer.iloc[test_index_inner]
             y_train_inner, y_test_inner = y_train_outer.iloc[
                 train_index_inner], y_train_outer.iloc[test_index_inner]
-            best_inner_score = None
-            best_inner_grid = {}
 
             # Run either RandomizedSearch or GridSearch for input parameters
             for param_dict in ParameterSampler(param_distributions=params_grid, n_iter=randomized_search_iter) if randomized_search else ParameterGrid(param_grid=params_grid):
@@ -119,18 +115,15 @@ def nested_cv(X, y, model, params_grid, outer_kfolds,
                 # Find best score and corresponding best grid
                 if(best_inner_score is not None):
                     if(metric_score_indicator_lower and  best_inner_score > inner_grid_score):
-                        best_inner_score = transform_score_format(inner_grid_score)
+                        best_inner_score = transform_score_format(best_inner_score)
                     elif (not metric_score_indicator_lower and best_inner_score < inner_grid_score):
                         best_inner_score = transform_score_format(inner_grid_score)
                 else:
                     best_inner_score = transform_score_format(inner_grid_score)
+                    current_inner_score_value = best_inner_score+1 # first time random thing
                 # Update best_inner_grid once rather than calling it under each if statement 
                 if(current_inner_score_value is not None and current_inner_score_value != best_inner_score):
-                    best_inner_grid = param_dict
-
-            # Best grid and score found by the search
-            inner_params.append(best_inner_grid)
-            inner_scores.append(best_inner_score)
+                    best_inner_score = param_dict
 
         best_inner_params_list.append(best_inner_params)
         best_inner_score_list.append(best_inner_score)

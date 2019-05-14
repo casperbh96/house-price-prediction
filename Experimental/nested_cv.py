@@ -66,11 +66,13 @@ def nested_cv(X, y, model, params_grid, outer_kfolds,
     '''
 
     metric = cv_options.get('metric', mean_squared_error)
-    metric_score_indicator_lower = cv_options.get('metric_score_indicator_lower', True)
+    metric_score_indicator_lower = cv_options.get(
+        'metric_score_indicator_lower', True)
     sqrt_of_score = cv_options.get('sqrt_of_score', False)
     randomized_search = cv_options.get('randomized_search', True)
     randomized_search_iter = cv_options.get('randomized_search_iter', 10)
-    do_recursive_feature_elimination = cv_options.get('do_recursive_feature_elimination', False)
+    do_recursive_feature_elimination = cv_options.get(
+        'do_recursive_feature_elimination', False)
 
     # TODO: Convert the big function into class.
     def transform_score_format(scoreValue):
@@ -114,14 +116,16 @@ def nested_cv(X, y, model, params_grid, outer_kfolds,
 
                 # Find best score and corresponding best grid
                 if(best_inner_score is not None):
-                    if(metric_score_indicator_lower and  best_inner_score > inner_grid_score):
-                        best_inner_score = transform_score_format(best_inner_score)
+                    if(metric_score_indicator_lower and best_inner_score > inner_grid_score):
+                        best_inner_score = transform_score_format(
+                            best_inner_score)
                     elif (not metric_score_indicator_lower and best_inner_score < inner_grid_score):
-                        best_inner_score = transform_score_format(inner_grid_score)
+                        best_inner_score = transform_score_format(
+                            inner_grid_score)
                 else:
                     best_inner_score = transform_score_format(inner_grid_score)
-                    current_inner_score_value = best_inner_score+1 # first time random thing
-                # Update best_inner_grid once rather than calling it under each if statement 
+                    current_inner_score_value = best_inner_score+1  # first time random thing
+                # Update best_inner_grid once rather than calling it under each if statement
                 if(current_inner_score_value is not None and current_inner_score_value != best_inner_score):
                     best_inner_score = param_dict
 
@@ -147,7 +151,7 @@ def nested_cv(X, y, model, params_grid, outer_kfolds,
             pred = model.predict(X_test_outer_rfe)
 
         outer_scores.append(transform_score_format(metric(y_test_outer, pred)))
-        
+
         # Append variance
         variance.append(np.var(pred, ddof=1))
         print('\nResults for outer fold:\nBest inner parameters was: {0}'.format(

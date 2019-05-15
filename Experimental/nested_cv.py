@@ -63,6 +63,9 @@ def nested_cv(X, y, model, params_grid, outer_kfolds,
 
     best_inner_params_list
          Best inner params for each outer loop
+
+    best_params
+        Best Params that fits GridSearchCV Format
     '''
 
     metric = cv_options.get('metric', mean_squared_error)
@@ -80,6 +83,14 @@ def nested_cv(X, y, model, params_grid, outer_kfolds,
             return np.sqrt(scoreValue)
         return scoreValue
 
+    def score_to_best_params(best_score_params):	       
+        for key,value in best_score_params.items():	        
+            if key in best_params :	
+                 if value not in best_params[key]:	        
+                    best_params[key].append(value)	    
+            else:	
+                best_params[key] = [value]
+
     print('\n{0} <-- Running this model now'.format(type(model).__name__))
     outer_cv = KFold(n_splits=outer_kfolds, shuffle=True)
     inner_cv = KFold(n_splits=inner_kfolds, shuffle=True)
@@ -88,6 +99,7 @@ def nested_cv(X, y, model, params_grid, outer_kfolds,
     variance = []
     best_inner_params_list = []  # Change both to by one thing out of key-value pair
     best_inner_score_list = []
+    best_params = {}
 
     # Split X and y into K-partitions to Outer CV
     for (i, (train_index, test_index)) in enumerate(outer_cv.split(X, y)):
@@ -159,6 +171,8 @@ def nested_cv(X, y, model, params_grid, outer_kfolds,
 
         # Append variance
         variance.append(np.var(pred, ddof=1))
+        score_to_best_params(best_inner_params)
+
         print('\nResults for outer fold:\nBest inner parameters was: {0}'.format(
             best_inner_params_list[i]))
         print('Outer score: {0}'.format(outer_scores[i]))
@@ -178,4 +192,4 @@ def nested_cv(X, y, model, params_grid, outer_kfolds,
     plt.title("{0}: Score VS Variance".format(type(model).__name__),
               x=.5, y=1.1, fontsize="15")
 
-    return outer_scores, best_inner_score_list, best_inner_params_list
+    return outer_scores, best_inner_score_list, best_inner_params_list, best_params

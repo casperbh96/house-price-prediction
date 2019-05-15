@@ -149,6 +149,11 @@ def nested_cv(X, y, model, params_grid, outer_kfolds,
             model.set_params(**best_inner_params)
             model.fit(X_train_outer_rfe, y_train_outer)
             pred = model.predict(X_test_outer_rfe)
+        else:
+            # Train model with best inner parameters on the outer split
+            model.set_params(**best_inner_params)
+            model.fit(X_train_outer, y_train_outer)
+            pred = model.predict(X_test_outer)
 
         outer_scores.append(transform_score_format(metric(y_test_outer, pred)))
 

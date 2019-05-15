@@ -19,6 +19,7 @@ from sklearn.model_selection import check_cv
 from sklearn.base import is_classifier
 from sklearn.model_selection._validation import _fit_and_score
 from sklearn import linear_model
+import xgboost as xgb
 
 train = pd.read_csv('./data/train.csv')
 test = pd.read_csv('./data/test.csv')
@@ -64,9 +65,9 @@ outer_loop_MSE_scores = []
 inner_loop_MSE_scores = []
 inner_loop_won_params = []
 
-model = RandomForestRegressor()
-params = {'max_depth': [3, None],
-          'n_estimators': (10, 20)#, 30, 50, 100, 200, 400, 600, 800, 1000)
+model = xgb.XGBRegressor()
+params = {'colsample_bytree': np.linspace(0.3, 0.5),
+          'n_estimators':[500]
           }
 
 variance = []
@@ -77,7 +78,7 @@ for (i, (train_index,test_index)) in enumerate(outer_kf.split(X,y)):
     X_train_outer, X_test_outer = X.iloc[train_index], X.iloc[test_index]
     y_train_outer, y_test_outer = y.iloc[train_index], y.iloc[test_index]
     
-    GSCV = GridSearchCV(estimator=model,param_grid=params,scoring='neg_mean_squared_error',cv=inner_kf)
+    GSCV = GridSearchCV(estimator=model,param_grid=params,scoring='neg_mean_squared_error',cv=inner_kf,n_jobs=-1)
     
     # GSCV is looping through the training data to find the best parameters. This is the inner loop
     GSCV.fit(X_train_outer,y_train_outer)

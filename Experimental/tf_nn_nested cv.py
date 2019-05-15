@@ -49,7 +49,7 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Dropout, Flatten
 from keras.wrappers.scikit_learn import KerasRegressor
 
-def create_neural_network_model(first_neuron=64,
+def create_neural_network_model(first_neuron=200,
                                  activation='relu',
                                  kernel_initializer='uniform',
                                  dropout_rate=0,
@@ -57,9 +57,15 @@ def create_neural_network_model(first_neuron=64,
     model = Sequential()
     columns = X.shape[1]
     
-    model.add(Dense(first_neuron, activation=activation, input_shape=(columns,)))
-    model.add(Dense(first_neuron, activation=activation))
-    model.add(Dense(1))
+    #model.add(Dense(first_neuron, activation=activation, input_shape=(columns,)))
+    #model.add(Dense(first_neuron, activation=activation))
+    #model.add(Dense(1))
+    
+    model.add(Dense(first_neuron, kernel_initializer='normal', activation='relu', input_shape=(columns,)))
+    model.add(Dense(100, kernel_initializer='normal', activation='relu'))
+    model.add(Dense(50, kernel_initializer='normal', activation='relu'))
+    model.add(Dense(25, kernel_initializer='normal', activation='relu'))
+    model.add(Dense(1, kernel_initializer='normal'))
     
     model.compile(
         loss='mean_squared_error', 
@@ -72,12 +78,13 @@ def create_neural_network_model(first_neuron=64,
 model = KerasRegressor(build_fn=create_neural_network_model)
 
 # Prepare the Grid
-param_grid = dict(epochs=[10,20,30], 
+param_grid = dict(epochs=[50,100,150], 
                   batch_size=[512,1024], 
                   optimizer=['Adam', 'Nadam'],
                   dropout_rate=[0.0],
                   activation=['relu', 'elu'],
                   kernel_initializer=['uniform', 'normal'],
-                  first_neuron=[8, 9])
+                  first_neuron=[100, 150, 200])
 
 outer_score, best_inner_score, best_params = nested_cv(X, y, model, param_grid, 5, 5, sqrt_of_score = True)
+print(outer_score, best_inner_score, best_params)

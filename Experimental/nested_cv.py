@@ -139,7 +139,7 @@ def nested_cv(X, y, model, params_grid, outer_kfolds,
                     current_inner_score_value = best_inner_score+1  # first time random thing
                 # Update best_inner_grid once rather than calling it under each if statement
                 if(current_inner_score_value is not None and current_inner_score_value != best_inner_score):
-                    best_inner_score = param_dict
+                    best_inner_params = param_dict
 
         best_inner_params_list.append(best_inner_params)
         best_inner_score_list.append(best_inner_score)

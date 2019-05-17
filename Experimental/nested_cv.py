@@ -84,6 +84,7 @@ class NestedCV():
         self.outer_scores = []
         self.best_params = {}
         self.best_inner_score_list = []
+        self.variance = []
 
     def _transform_score_format(self, scoreValue):
         if self.sqrt_of_score:
@@ -190,7 +191,22 @@ class NestedCV():
                 best_inner_params_list[i]))
             print('Outer score: {0}'.format(outer_scores[i]))
             print('Inner score: {0}'.format(best_inner_score_list[i]))
-
+        self.variance = variance
         self.outer_scores = outer_scores
         self.best_inner_score_list = best_inner_score_list
         self.best_params = best_params
+
+    def score_vs_variance_plot(self):
+        # Plot score vs variance
+        plt.figure()
+        plt.subplot(211)
+
+        variance_plot, = plt.plot(self.variance, color='b')
+        score_plot, = plt.plot(self.outer_scores, color='r')
+
+        plt.legend([variance_plot, score_plot],
+                   ["Variance", "Score"],
+                   bbox_to_anchor=(0, .4, .5, 0))
+
+        plt.title("{0}: Score VS Variance".format(type(self.model).__name__),
+                  x=.5, y=1.1, fontsize="15")

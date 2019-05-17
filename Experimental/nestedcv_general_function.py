@@ -84,15 +84,14 @@ def create_neural_network_model(first_neuron=64,
 
 
 models_to_run = [KerasRegressor(build_fn=create_neural_network_model,verbose=0),RandomForestRegressor(), xgb.XGBRegressor()]
-'''
+
 models_param_grid = [
                     { # 1st param grid, corresponding to KerasRegressor
-                            'epochs' :              [50,100,150],
+                            'epochs' :              [50,100,150,200],
                             'batch_size' :          [512,1024],
                             'optimizer' :           ['Adam', 'Nadam'],
                             'dropout_rate' :        [0.0],
                             'activation' :          ['relu', 'elu'],
-                            'kernel_initializer' :  ['uniform', 'normal'],
                             'first_neuron' :        [100, 150, 200]
                     },
                     { # 2nd param grid, corresponding to RandomForestRegressor
@@ -108,31 +107,7 @@ models_param_grid = [
                             'reg_lambda' : (1,1.2,1.4)
                     }
                     ]
-'''
-
-models_param_grid = [
-                    { # 1st param grid, corresponding to KerasRegressor
-                            'epochs' :              [5,10],
-                            'batch_size' :          [16],
-                            'optimizer' :           ['Adam'],
-                            'dropout_rate' :        [0.0],
-                            'activation' :          ['relu'],
-                            'first_neuron' :        [10,20]
-                    },
-                    { # 2nd param grid, corresponding to RandomForestRegressor
-                            'max_depth': [3, None],
-                            'n_estimators': [10,20],
-                            'max_features' : [10,20]
-                    }, 
-                    { # 3rd param grid, corresponding to XGBRegressor
-                            'learning_rate': [0.05],
-                            'n_estimators': [10,20],
-                            'reg_alpha' : (1,1.2),
-                            'reg_lambda' : (1,1.2,1.4)
-                    }
-                    ]
-
-NUM_TRIALS = 2
+NUM_TRIALS = 50
 
 RF_scores = []
 XGB_scores = []

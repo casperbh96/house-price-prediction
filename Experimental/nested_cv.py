@@ -160,7 +160,7 @@ class NestedCV():
                     if(best_inner_score is not None):
                         if(self.metric_score_indicator_lower and best_inner_score > inner_grid_score):
                             best_inner_score = self._transform_score_format(
-                                best_inner_score)
+                                inner_grid_score)
                         elif (not self.metric_score_indicator_lower and best_inner_score < inner_grid_score):
                             best_inner_score = self._transform_score_format(
                                 inner_grid_score)

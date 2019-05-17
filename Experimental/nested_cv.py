@@ -93,7 +93,7 @@ class NestedCV():
 
     def _score_to_best_params(self, best_inner_params_list):
         params_dict = {}
-        for _, best_inner_params in best_inner_params_list:
+        for best_inner_params in best_inner_params_list:
             for key, value in best_inner_params.items():
                 if key in params_dict:
                     if value not in params_dict[key]:

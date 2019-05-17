@@ -7,18 +7,11 @@ from sklearn.feature_selection import RFE, RFECV
 
 
 class NestedCV():
-    '''A general method to handle nested cross-validation for any estimator that
+    '''A general class to handle nested cross-validation for any estimator that
     implements the scikit-learn estimator interface.
 
     Parameters
     ----------
-    X : pandas dataframe (rows, columns)
-        Training dataframe, where rows is total number of observations and columns
-        is total number of features
-
-    y : pandas dataframe
-        Output dataframe, also called output variable. y is what you want to predict.
-
     model : estimator
         The estimator implements scikit-learn estimator interface.
 
@@ -51,20 +44,6 @@ class NestedCV():
 
         recursive_feature_elimination : boolean, default = False
             Whether to do feature elimination
-
-    Returns
-    -------
-    outer_scores
-         Outer Score List.
-
-    best_inner_score_list
-         Best inner scores for each outer loop
-
-    best_inner_params_list
-         Best inner params for each outer loop
-
-    best_params
-        Best Params that fits GridSearchCV Format
     '''
 
     def __init__(self, model, params_grid, outer_kfolds, inner_kfolds, cv_options={}):
@@ -86,11 +65,13 @@ class NestedCV():
         self.best_inner_score_list = []
         self.variance = []
 
+    # to check if use sqrt_of_score and handle the different cases
     def _transform_score_format(self, scoreValue):
         if self.sqrt_of_score:
             return np.sqrt(scoreValue)
         return scoreValue
 
+    # to convert array of dict to dict with array values, so it can be used as params for parameter tuning
     def _score_to_best_params(self, best_inner_params_list):
         params_dict = {}
         for best_inner_params in best_inner_params_list:
@@ -102,6 +83,7 @@ class NestedCV():
                     params_dict[key] = [value]
         return params_dict
 
+    # a method to handle  recursive feature elimination
     def _fit_recursive_feature_elimination(self, best_inner_params, X_train_outer, y_train_outer, X_test_outer):
         print('\nRunning recursive feature elimination for outer loop...')
         # K-fold (inner_kfolds) recursive feature elimination
@@ -119,6 +101,31 @@ class NestedCV():
         self.model.fit(X_train_outer_rfe, y_train_outer)
         return self.model.predict(X_test_outer_rfe)
 
+    '''A method to fit nested cross-validation 
+    Parameters
+    ----------
+    X : pandas dataframe (rows, columns)
+        Training dataframe, where rows is total number of observations and columns
+        is total number of features
+
+    y : pandas dataframe
+        Output dataframe, also called output variable. y is what you want to predict.
+
+    Returns
+    -------
+    It will not return directly the values, but it's accessable from the class object it self.
+    You should be able to access:
+    variance
+        model variance
+    outer_scores 
+        Outer Score List.
+    best_inner_score_list 
+        Best inner scores for each outer loop
+    best_params 
+        Best Params as a dict or array values
+    best_inner_params_list 
+        Best inner params for each outer loop as ab array of dict
+    '''
     def fit(self, X, y):
         print('\n{0} <-- Running this model now'.format(type(self.model).__name__))
         outer_cv = KFold(n_splits=self.outer_kfolds, shuffle=True)
@@ -200,7 +207,8 @@ class NestedCV():
         self.best_inner_score_list = best_inner_score_list
         self.best_params = self._score_to_best_params(best_inner_params_list)
         self.best_inner_params_list = best_inner_params_list
-
+    
+    # Method to show score vs variance chart. You can run it only after fitting the model.
     def score_vs_variance_plot(self):
         # Plot score vs variance
         plt.figure()

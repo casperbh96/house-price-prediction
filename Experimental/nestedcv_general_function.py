@@ -7,6 +7,7 @@ Created on Sat May  4 01:50:41 2019
 import pandas as pd
 from fancyimpute import IterativeImputer
 from matplotlib import pyplot as plt
+from sklearn.linear_model import LinearRegression
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import GridSearchCV, KFold
 import numpy as np
@@ -14,6 +15,10 @@ from sklearn.metrics import mean_squared_error
 import xgboost as xgb
 from nested_cv import NestedCV
 import lightgbm as lgb
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Dropout, Flatten
+from keras.wrappers.scikit_learn import KerasRegressor
 
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -49,40 +54,123 @@ def data_engineering(train, test):
 
 X,X_test,y = data_engineering(train,test)
 
-models_to_run = [RandomForestRegressor(), xgb.XGBRegressor(), lgb.LGBMRegressor()]
-models_param_grid = [ 
-                    { # 1st param grid, corresponding to RandomForestRegressor
+def create_neural_network_model(first_neuron=64,
+                                activation='relu',
+                                optimizer='Adam',
+                                dropout_rate=0.1):
+    model = Sequential()
+    columns = X.shape[1]
+    
+    model.add(Dense(64, activation=activation, input_shape=(columns,)))
+    model.add(Dense(128, activation=activation))
+    model.add(Dropout(dropout_rate))
+    model.add(Dense(64, activation=activation))
+    model.add(Dropout(dropout_rate))
+    model.add(Dense(32, activation=activation))
+    model.add(Dropout(dropout_rate))
+    model.add(Dense(16, activation=activation))
+    model.add(Dropout(dropout_rate))
+    model.add(Dense(8, activation=activation))
+    model.add(Dropout(dropout_rate))
+    model.add(Dense(1, activation='linear'))
+    
+    model.compile(
+        loss='mean_squared_error', 
+        optimizer = 'adam', 
+        metrics=['mean_squared_error']
+    )
+    
+    return model
+
+
+models_to_run = [KerasRegressor(build_fn=create_neural_network_model,verbose=0),RandomForestRegressor(), xgb.XGBRegressor()]
+'''
+models_param_grid = [
+                    { # 1st param grid, corresponding to KerasRegressor
+                            'epochs' :              [50,100,150],
+                            'batch_size' :          [512,1024],
+                            'optimizer' :           ['Adam', 'Nadam'],
+                            'dropout_rate' :        [0.0],
+                            'activation' :          ['relu', 'elu'],
+                            'kernel_initializer' :  ['uniform', 'normal'],
+                            'first_neuron' :        [100, 150, 200]
+                    },
+                    { # 2nd param grid, corresponding to RandomForestRegressor
                             'max_depth': [3, None],
                             'n_estimators': [100,200,300,400,500,600,700,800,900,1000],
                             'max_features' : [50,100,150,200]
                     }, 
-                    { # 2nd param grid, corresponding to XGBRegressor
+                    { # 3rd param grid, corresponding to XGBRegressor
                             'learning_rate': [0.05],
                             'colsample_bytree': np.linspace(0.3, 0.5),
                             'n_estimators': [100,200,300,400,500,600,700,800,900,1000],
                             'reg_alpha' : (1,1.2),
                             'reg_lambda' : (1,1.2,1.4)
+                    }
+                    ]
+'''
+
+models_param_grid = [
+                    { # 1st param grid, corresponding to KerasRegressor
+                            'epochs' :              [5,10],
+                            'batch_size' :          [16],
+                            'optimizer' :           ['Adam'],
+                            'dropout_rate' :        [0.0],
+                            'activation' :          ['relu'],
+                            'first_neuron' :        [10,20]
                     },
-                    { # 3rd param grid, corresponding to LGBMRegressor
+                    { # 2nd param grid, corresponding to RandomForestRegressor
+                            'max_depth': [3, None],
+                            'n_estimators': [10,20],
+                            'max_features' : [10,20]
+                    }, 
+                    { # 3rd param grid, corresponding to XGBRegressor
                             'learning_rate': [0.05],
-                            'n_estimators': [100,200,300,400,500,600,700,800,900,1000],
+                            'n_estimators': [10,20],
                             'reg_alpha' : (1,1.2),
                             'reg_lambda' : (1,1.2,1.4)
                     }
                     ]
 
-for i,model in enumerate(models_to_run):
-    nested_CV_search = NestedCV(model=model, params_grid=models_param_grid[i], outer_kfolds=5, inner_kfolds=5, 
-                      cv_options={'sqrt_of_score':True, 'randomized_search_iter':30})
-    nested_CV_search.fit(X=X,y=y)
-    model_param_grid = nested_CV_search.best_params
-    print('\nCumulated best parameter grids was:\n{0}'.format(model_param_grid))
-    
-    gscv = GridSearchCV(estimator=model,param_grid=model_param_grid,scoring='neg_mean_squared_error',cv=5,n_jobs=-1)
-    gscv.fit(X,y)
-    
-    print('\nFitting with optimal parameters:\n{0}'.format(gscv.best_params_))
-    gscv.predict(X_test)
-    score = np.sqrt(-gscv.best_score_)
-    
-    print('\n###SCORE: ',score)
+NUM_TRIALS = 2
+
+RF_scores = []
+XGB_scores = []
+NN_scores = []
+
+for trial in range(NUM_TRIALS):
+    for i,model in enumerate(models_to_run):
+        nested_CV_search = NestedCV(model=model, params_grid=models_param_grid[i], outer_kfolds=5, inner_kfolds=5, 
+                          cv_options={'sqrt_of_score':True, 'randomized_search_iter':30})
+        nested_CV_search.fit(X=X,y=y)
+        model_param_grid = nested_CV_search.best_params
+        print('\nCumulated best parameter grids was:\n{0}'.format(model_param_grid))
+        
+        gscv = GridSearchCV(estimator=model,param_grid=model_param_grid,scoring='neg_mean_squared_error',cv=5)
+        gscv.fit(X,y)
+        
+        print('\nFitting with optimal parameters:\n{0}'.format(gscv.best_params_))
+        gscv.predict(X_test)
+        score = np.sqrt(-gscv.best_score_)
+        
+        if(type(model).__name__ == 'KerasRegressor'):
+            NN_scores.append(score)
+        elif(type(model).__name__ == 'RandomForestRegressor'):
+            RF_scores.append(score)
+        elif(type(model).__name__ == 'XGBRegressor'):
+            XGB_scores.append(score)
+        
+        print('\nFinal score for {0} was {1}'.format(type(model).__name__,score))
+
+plt.figure()
+
+rf, = plt.plot(RF_scores, color='b')
+xgb, = plt.plot(XGB_scores, color='r')
+nn, = plt.plot(NN_scores, color='g')
+
+plt.legend([rf, xgb, nn],
+           ["Random Forest", "XGBoost", "Neural Networks"],
+           bbox_to_anchor=(0, .4, .5, 0))
+
+plt.title('Test scores as RMSLE with hyperparameter optimization',
+          x=.5, y=1.1, fontsize="15")

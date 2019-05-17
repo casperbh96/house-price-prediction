@@ -85,7 +85,7 @@ class NestedCV():
 
     # a method to handle  recursive feature elimination
     def _fit_recursive_feature_elimination(self, best_inner_params, X_train_outer, y_train_outer, X_test_outer):
-        print('\nRunning recursive feature elimination for outer loop...')
+        print('\nRunning recursive feature elimination for outer loop... (SLOW)')
         # K-fold (inner_kfolds) recursive feature elimination
         rfe = RFECV(estimator=self.model, min_features_to_select=20,
                     scoring='neg_mean_squared_error', cv=self.inner_kfolds, n_jobs=-1)
@@ -101,42 +101,48 @@ class NestedCV():
         self.model.fit(X_train_outer_rfe, y_train_outer)
         return self.model.predict(X_test_outer_rfe)
 
-    '''A method to fit nested cross-validation 
-    Parameters
-    ----------
-    X : pandas dataframe (rows, columns)
-        Training dataframe, where rows is total number of observations and columns
-        is total number of features
-
-    y : pandas dataframe
-        Output dataframe, also called output variable. y is what you want to predict.
-
-    Returns
-    -------
-    It will not return directly the values, but it's accessable from the class object it self.
-    You should be able to access:
-    variance
-        model variance
-    outer_scores 
-        Outer Score List.
-    best_inner_score_list 
-        Best inner scores for each outer loop
-    best_params 
-        Best Params as a dict or array values
-    best_inner_params_list 
-        Best inner params for each outer loop as ab array of dict
-    '''
     def fit(self, X, y):
+        '''A method to fit nested cross-validation 
+        Parameters
+        ----------
+        X : pandas dataframe (rows, columns)
+            Training dataframe, where rows is total number of observations and columns
+            is total number of features
+    
+        y : pandas dataframe
+            Output dataframe, also called output variable. y is what you want to predict.
+    
+        Returns
+        -------
+        It will not return directly the values, but it's accessable from the class object it self.
+        You should be able to access:
+        
+        variance
+            Model variance by numpy.var()
+            
+        outer_scores 
+            Outer score List.
+            
+        best_inner_score_list 
+            Best inner scores for each outer loop
+            
+        best_params 
+            All best params from each inner loop cumulated in a dict
+            
+        best_inner_params_list 
+            Best inner params for each outer loop as an array of dictionaries
+        '''
+    
         print('\n{0} <-- Running this model now'.format(type(self.model).__name__))
         outer_cv = KFold(n_splits=self.outer_kfolds, shuffle=True)
         inner_cv = KFold(n_splits=self.inner_kfolds, shuffle=True)
         model = self.model
-
+    
         outer_scores = []
         variance = []
         best_inner_params_list = []  # Change both to by one thing out of key-value pair
         best_inner_score_list = []
-
+    
         # Split X and y into K-partitions to Outer CV
         for (i, (train_index, test_index)) in enumerate(outer_cv.split(X, y)):
             print('\n{0}/{1} <-- Current outer fold'.format(i+1, self.outer_kfolds))
@@ -144,44 +150,44 @@ class NestedCV():
             y_train_outer, y_test_outer = y.iloc[train_index], y.iloc[test_index]
             best_inner_params = {}
             best_inner_score = None
-
+    
             # Split X_train_outer and y_train_outer into K-partitions to be inner CV
             for (j, (train_index_inner, test_index_inner)) in enumerate(inner_cv.split(X_train_outer, y_train_outer)):
-                print(
-                    '\n\t{0}/{1} <-- Current inner fold'.format(j+1, self.inner_kfolds))
+                print('\n\t{0}/{1} <-- Current inner fold'.format(j+1, self.inner_kfolds))
                 X_train_inner, X_test_inner = X_train_outer.iloc[
                     train_index_inner], X_train_outer.iloc[test_index_inner]
                 y_train_inner, y_test_inner = y_train_outer.iloc[
                     train_index_inner], y_train_outer.iloc[test_index_inner]
-
+    
                 # Run either RandomizedSearch or GridSearch for input parameters
-                for param_dict in ParameterSampler(param_distributions=self.params_grid, n_iter=self.randomized_search_iter) if self.randomized_search else ParameterGrid(param_grid=self.params_grid):
+                for param_dict in ParameterSampler(param_distributions=self.params_grid, 
+                                                   n_iter=self.randomized_search_iter) if (self.randomized_search) else (
+                                                           ParameterGrid(param_grid=self.params_grid)):
                     # Set parameters, train model on inner split, predict results.
                     model.set_params(**param_dict)
                     model.fit(X_train_inner, y_train_inner)
                     inner_pred = model.predict(X_test_inner)
                     inner_grid_score = self.metric(y_test_inner, inner_pred)
                     current_inner_score_value = best_inner_score
-
+    
                     # Find best score and corresponding best grid
                     if(best_inner_score is not None):
                         if(self.metric_score_indicator_lower and best_inner_score > inner_grid_score):
-                            best_inner_score = self._transform_score_format(
-                                inner_grid_score)
+                            best_inner_score = self._transform_score_format(inner_grid_score)
+                            
                         elif (not self.metric_score_indicator_lower and best_inner_score < inner_grid_score):
-                            best_inner_score = self._transform_score_format(
-                                inner_grid_score)
+                            best_inner_score = self._transform_score_format(inner_grid_score)
                     else:
-                        best_inner_score = self._transform_score_format(
-                            inner_grid_score)
+                        best_inner_score = self._transform_score_format(inner_grid_score)
                         current_inner_score_value = best_inner_score+1  # first time random thing
+                        
                     # Update best_inner_grid once rather than calling it under each if statement
                     if(current_inner_score_value is not None and current_inner_score_value != best_inner_score):
                         best_inner_params = param_dict
-
+    
             best_inner_params_list.append(best_inner_params)
             best_inner_score_list.append(best_inner_score)
-
+    
             if self.recursive_feature_elimination:
                 pred = self._fit_recursive_feature_elimination(
                     best_inner_params, X_train_outer, y_train_outer, X_test_outer)
@@ -190,24 +196,24 @@ class NestedCV():
                 model.set_params(**best_inner_params)
                 model.fit(X_train_outer, y_train_outer)
                 pred = model.predict(X_test_outer)
-
+    
             outer_scores.append(self._transform_score_format(
                 self.metric(y_test_outer, pred)))
-
+    
             # Append variance
             variance.append(np.var(pred, ddof=1))
-
+    
             print('\nResults for outer fold:\nBest inner parameters was: {0}'.format(
                 best_inner_params_list[i]))
             print('Outer score: {0}'.format(outer_scores[i]))
             print('Inner score: {0}'.format(best_inner_score_list[i]))
-
+    
         self.variance = variance
         self.outer_scores = outer_scores
         self.best_inner_score_list = best_inner_score_list
         self.best_params = self._score_to_best_params(best_inner_params_list)
         self.best_inner_params_list = best_inner_params_list
-    
+
     # Method to show score vs variance chart. You can run it only after fitting the model.
     def score_vs_variance_plot(self):
         # Plot score vs variance

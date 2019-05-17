@@ -6,8 +6,7 @@ from sklearn.metrics import mean_squared_error
 from sklearn.feature_selection import RFE, RFECV
 
 
-def nested_cv(X, y, model, params_grid, outer_kfolds,
-              inner_kfolds, cv_options={}):
+class NestedCV():
     '''A general method to handle nested cross-validation for any estimator that
     implements the scikit-learn estimator interface.
 
@@ -68,128 +67,130 @@ def nested_cv(X, y, model, params_grid, outer_kfolds,
         Best Params that fits GridSearchCV Format
     '''
 
-    metric = cv_options.get('metric', mean_squared_error)
-    metric_score_indicator_lower = cv_options.get(
-        'metric_score_indicator_lower', True)
-    sqrt_of_score = cv_options.get('sqrt_of_score', False)
-    randomized_search = cv_options.get('randomized_search', True)
-    randomized_search_iter = cv_options.get('randomized_search_iter', 10)
-    do_recursive_feature_elimination = cv_options.get(
-        'do_recursive_feature_elimination', False)
+    def __init__(self, model, params_grid, outer_kfolds, inner_kfolds, cv_options={}):
+        self.model = model
+        self.params_grid = params_grid
+        self.outer_kfolds = outer_kfolds
+        self.inner_kfolds = inner_kfolds
+        self.metric = cv_options.get('metric', mean_squared_error)
+        self.metric_score_indicator_lower = cv_options.get(
+            'metric_score_indicator_lower', True)
+        self.sqrt_of_score = cv_options.get('sqrt_of_score', False)
+        self.randomized_search = cv_options.get('randomized_search', True)
+        self.randomized_search_iter = cv_options.get(
+            'randomized_search_iter', 10)
+        self.do_recursive_feature_elimination = cv_options.get(
+            'do_recursive_feature_elimination', False)
+        self.outer_scores = []
+        self.best_params = {}
+        self.best_inner_score_list = []
 
-    # TODO: Convert the big function into class.
-    def transform_score_format(scoreValue):
-        if sqrt_of_score:
+    def _transform_score_format(self, scoreValue):
+        if self.sqrt_of_score:
             return np.sqrt(scoreValue)
         return scoreValue
 
-    def score_to_best_params(best_score_params):	       
-        for key,value in best_score_params.items():	        
-            if key in best_params :	
-                 if value not in best_params[key]:	        
-                    best_params[key].append(value)	    
-            else:	
-                best_params[key] = [value]
+    def _score_to_best_params(self, best_score_params):
+        for key, value in best_score_params.items():
+            if key in self.best_params:
+                if value not in self.best_params[key]:
+                    self.best_params[key].append(value)
+            else:
+                self.best_params[key] = [value]
 
-    print('\n{0} <-- Running this model now'.format(type(model).__name__))
-    outer_cv = KFold(n_splits=outer_kfolds, shuffle=True)
-    inner_cv = KFold(n_splits=inner_kfolds, shuffle=True)
+    def fit(self, X, y):
+        print('\n{0} <-- Running this model now'.format(type(self.model).__name__))
+        outer_cv = KFold(n_splits=self.outer_kfolds, shuffle=True)
+        inner_cv = KFold(n_splits=self.inner_kfolds, shuffle=True)
+        model = self.model
 
-    outer_scores = []
-    variance = []
-    best_inner_params_list = []  # Change both to by one thing out of key-value pair
-    best_inner_score_list = []
-    best_params = {}
+        outer_scores = []
+        variance = []
+        best_inner_params_list = []  # Change both to by one thing out of key-value pair
+        best_inner_score_list = []
+        best_params = {}
 
-    # Split X and y into K-partitions to Outer CV
-    for (i, (train_index, test_index)) in enumerate(outer_cv.split(X, y)):
-        print('\n{0}/{1} <-- Current outer fold'.format(i+1, outer_kfolds))
-        X_train_outer, X_test_outer = X.iloc[train_index], X.iloc[test_index]
-        y_train_outer, y_test_outer = y.iloc[train_index], y.iloc[test_index]
-        best_inner_params = {}
-        best_inner_score = None
+        # Split X and y into K-partitions to Outer CV
+        for (i, (train_index, test_index)) in enumerate(outer_cv.split(X, y)):
+            print('\n{0}/{1} <-- Current outer fold'.format(i+1, self.outer_kfolds))
+            X_train_outer, X_test_outer = X.iloc[train_index], X.iloc[test_index]
+            y_train_outer, y_test_outer = y.iloc[train_index], y.iloc[test_index]
+            best_inner_params = {}
+            best_inner_score = None
 
-        # Split X_train_outer and y_train_outer into K-partitions to be inner CV
-        for (j, (train_index_inner, test_index_inner)) in enumerate(inner_cv.split(X_train_outer, y_train_outer)):
-            print('\n\t{0}/{1} <-- Current inner fold'.format(j+1, inner_kfolds))
-            X_train_inner, X_test_inner = X_train_outer.iloc[
-                train_index_inner], X_train_outer.iloc[test_index_inner]
-            y_train_inner, y_test_inner = y_train_outer.iloc[
-                train_index_inner], y_train_outer.iloc[test_index_inner]
+            # Split X_train_outer and y_train_outer into K-partitions to be inner CV
+            for (j, (train_index_inner, test_index_inner)) in enumerate(inner_cv.split(X_train_outer, y_train_outer)):
+                print(
+                    '\n\t{0}/{1} <-- Current inner fold'.format(j+1, self.inner_kfolds))
+                X_train_inner, X_test_inner = X_train_outer.iloc[
+                    train_index_inner], X_train_outer.iloc[test_index_inner]
+                y_train_inner, y_test_inner = y_train_outer.iloc[
+                    train_index_inner], y_train_outer.iloc[test_index_inner]
 
-            # Run either RandomizedSearch or GridSearch for input parameters
-            for param_dict in ParameterSampler(param_distributions=params_grid, n_iter=randomized_search_iter) if randomized_search else ParameterGrid(param_grid=params_grid):
-                # Set parameters, train model on inner split, predict results.
-                model.set_params(**param_dict)
-                model.fit(X_train_inner, y_train_inner)
-                inner_pred = model.predict(X_test_inner)
-                inner_grid_score = metric(y_test_inner, inner_pred)
-                current_inner_score_value = best_inner_score
+                # Run either RandomizedSearch or GridSearch for input parameters
+                for param_dict in ParameterSampler(param_distributions=self.params_grid, n_iter=self.randomized_search_iter) if self.randomized_search else ParameterGrid(param_grid=self.params_grid):
+                    # Set parameters, train model on inner split, predict results.
+                    model.set_params(**param_dict)
+                    model.fit(X_train_inner, y_train_inner)
+                    inner_pred = model.predict(X_test_inner)
+                    inner_grid_score = self.metric(y_test_inner, inner_pred)
+                    current_inner_score_value = best_inner_score
 
-                # Find best score and corresponding best grid
-                if(best_inner_score is not None):
-                    if(metric_score_indicator_lower and best_inner_score > inner_grid_score):
-                        best_inner_score = transform_score_format(
-                            best_inner_score)
-                    elif (not metric_score_indicator_lower and best_inner_score < inner_grid_score):
-                        best_inner_score = transform_score_format(
+                    # Find best score and corresponding best grid
+                    if(best_inner_score is not None):
+                        if(self.metric_score_indicator_lower and best_inner_score > inner_grid_score):
+                            best_inner_score = self._transform_score_format(
+                                best_inner_score)
+                        elif (not self.metric_score_indicator_lower and best_inner_score < inner_grid_score):
+                            best_inner_score = self._transform_score_format(
+                                inner_grid_score)
+                    else:
+                        best_inner_score = self._transform_score_format(
                             inner_grid_score)
-                else:
-                    best_inner_score = transform_score_format(inner_grid_score)
-                    current_inner_score_value = best_inner_score+1  # first time random thing
-                # Update best_inner_grid once rather than calling it under each if statement
-                if(current_inner_score_value is not None and current_inner_score_value != best_inner_score):
-                    best_inner_params = param_dict
+                        current_inner_score_value = best_inner_score+1  # first time random thing
+                    # Update best_inner_grid once rather than calling it under each if statement
+                    if(current_inner_score_value is not None and current_inner_score_value != best_inner_score):
+                        best_inner_params = param_dict
 
-        best_inner_params_list.append(best_inner_params)
-        best_inner_score_list.append(best_inner_score)
+            best_inner_params_list.append(best_inner_params)
+            best_inner_score_list.append(best_inner_score)
 
-        if do_recursive_feature_elimination:
-            print('\nRunning recursive feature elimination for outer loop...')
+            if self.do_recursive_feature_elimination:
+                print('\nRunning recursive feature elimination for outer loop...')
 
-            # K-fold (inner_kfolds) recursive feature elimination
-            rfe = RFECV(estimator=model, min_features_to_select=20,
-                        scoring='neg_mean_squared_error', cv=inner_kfolds, n_jobs=-1)
-            rfe.fit(X_train_outer, y_train_outer)
+                # K-fold (inner_kfolds) recursive feature elimination
+                rfe = RFECV(estimator=model, min_features_to_select=20,
+                            scoring='neg_mean_squared_error', cv=self.inner_kfolds, n_jobs=-1)
+                rfe.fit(X_train_outer, y_train_outer)
 
-            # Assign selected features to data
-            print('Best number of features was: {0}'.format(rfe.n_features_))
-            X_train_outer_rfe = rfe.transform(X_train_outer)
-            X_test_outer_rfe = rfe.transform(X_test_outer)
+                # Assign selected features to data
+                print('Best number of features was: {0}'.format(
+                    rfe.n_features_))
+                X_train_outer_rfe = rfe.transform(X_train_outer)
+                X_test_outer_rfe = rfe.transform(X_test_outer)
 
-            # Train model with best inner parameters on the outer split
-            model.set_params(**best_inner_params)
-            model.fit(X_train_outer_rfe, y_train_outer)
-            pred = model.predict(X_test_outer_rfe)
-        else:
-            # Train model with best inner parameters on the outer split
-            model.set_params(**best_inner_params)
-            model.fit(X_train_outer, y_train_outer)
-            pred = model.predict(X_test_outer)
+                # Train model with best inner parameters on the outer split
+                model.set_params(**best_inner_params)
+                model.fit(X_train_outer_rfe, y_train_outer)
+                pred = model.predict(X_test_outer_rfe)
+            else:
+                # Train model with best inner parameters on the outer split
+                model.set_params(**best_inner_params)
+                model.fit(X_train_outer, y_train_outer)
+                pred = model.predict(X_test_outer)
 
-        outer_scores.append(transform_score_format(metric(y_test_outer, pred)))
+            outer_scores.append(self._transform_score_format(
+                self.metric(y_test_outer, pred)))
 
-        # Append variance
-        variance.append(np.var(pred, ddof=1))
-        score_to_best_params(best_inner_params)
+            # Append variance
+            variance.append(np.var(pred, ddof=1))
+            self._score_to_best_params(best_inner_params)
 
-        print('\nResults for outer fold:\nBest inner parameters was: {0}'.format(
-            best_inner_params_list[i]))
-        print('Outer score: {0}'.format(outer_scores[i]))
-        print('Inner score: {0}'.format(best_inner_score_list[i]))
+            print('\nResults for outer fold:\nBest inner parameters was: {0}'.format(
+                best_inner_params_list[i]))
+            print('Outer score: {0}'.format(outer_scores[i]))
+            print('Inner score: {0}'.format(best_inner_score_list[i]))
 
-    # Plot score vs variance
-    plt.figure()
-    plt.subplot(211)
-
-    variance_plot, = plt.plot(variance, color='b')
-    score_plot, = plt.plot(outer_scores, color='r')
-
-    plt.legend([variance_plot, score_plot],
-               ["Variance", "Score"],
-               bbox_to_anchor=(0, .4, .5, 0))
-
-    plt.title("{0}: Score VS Variance".format(type(model).__name__),
-              x=.5, y=1.1, fontsize="15")
-
-    return outer_scores, best_inner_score_list, best_inner_params_list, best_params
+        self.outer_scores = outer_scores
+        self.best_inner_score_list = best_inner_score_list
+        self.best_params = best_params

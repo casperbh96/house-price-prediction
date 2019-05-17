@@ -91,13 +91,16 @@ class NestedCV():
             return np.sqrt(scoreValue)
         return scoreValue
 
-    def _score_to_best_params(self, best_score_params):
-        for key, value in best_score_params.items():
-            if key in self.best_params:
-                if value not in self.best_params[key]:
-                    self.best_params[key].append(value)
-            else:
-                self.best_params[key] = [value]
+    def _score_to_best_params(self, best_inner_params_list):
+        params_dict = {}
+        for _, best_inner_params in best_inner_params_list:
+            for key, value in best_inner_params.items():
+                if key in params_dict:
+                    if value not in params_dict[key]:
+                        params_dict[key].append(value)
+                else:
+                    params_dict[key] = [value]
+        return params_dict
 
     def _fit_recursive_feature_elimination(self, best_inner_params, X_train_outer, y_train_outer, X_test_outer):
         print('\nRunning recursive feature elimination for outer loop...')
@@ -126,7 +129,6 @@ class NestedCV():
         variance = []
         best_inner_params_list = []  # Change both to by one thing out of key-value pair
         best_inner_score_list = []
-        best_params = {}
 
         # Split X and y into K-partitions to Outer CV
         for (i, (train_index, test_index)) in enumerate(outer_cv.split(X, y)):
@@ -187,7 +189,6 @@ class NestedCV():
 
             # Append variance
             variance.append(np.var(pred, ddof=1))
-            self._score_to_best_params(best_inner_params)
 
             print('\nResults for outer fold:\nBest inner parameters was: {0}'.format(
                 best_inner_params_list[i]))
@@ -197,7 +198,7 @@ class NestedCV():
         self.variance = variance
         self.outer_scores = outer_scores
         self.best_inner_score_list = best_inner_score_list
-        self.best_params = best_params
+        self.best_params = self._score_to_best_params(best_inner_params_list)
 
     def score_vs_variance_plot(self):
         # Plot score vs variance

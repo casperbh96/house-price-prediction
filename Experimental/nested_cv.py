@@ -49,7 +49,7 @@ class NestedCV():
         randomized_search_iter : int, default = 10
             Number of iterations for randomized search
 
-        do_recursive_feature_elimination : boolean, default = False
+        recursive_feature_elimination : boolean, default = False
             Whether to do feature elimination
 
     Returns
@@ -79,8 +79,8 @@ class NestedCV():
         self.randomized_search = cv_options.get('randomized_search', True)
         self.randomized_search_iter = cv_options.get(
             'randomized_search_iter', 10)
-        self.do_recursive_feature_elimination = cv_options.get(
-            'do_recursive_feature_elimination', False)
+        self.recursive_feature_elimination = cv_options.get(
+            'recursive_feature_elimination', False)
         self.outer_scores = []
         self.best_params = {}
         self.best_inner_score_list = []
@@ -98,6 +98,23 @@ class NestedCV():
                     self.best_params[key].append(value)
             else:
                 self.best_params[key] = [value]
+
+    def _fit_recursive_feature_elimination(self, best_inner_params, X_train_outer, y_train_outer, X_test_outer):
+        print('\nRunning recursive feature elimination for outer loop...')
+        # K-fold (inner_kfolds) recursive feature elimination
+        rfe = RFECV(estimator=self.model, min_features_to_select=20,
+                    scoring='neg_mean_squared_error', cv=self.inner_kfolds, n_jobs=-1)
+        rfe.fit(X_train_outer, y_train_outer)
+
+        # Assign selected features to data
+        print('Best number of features was: {0}'.format(rfe.n_features_))
+        X_train_outer_rfe = rfe.transform(X_train_outer)
+        X_test_outer_rfe = rfe.transform(X_test_outer)
+
+        # Train model with best inner parameters on the outer split
+        self.model.set_params(**best_inner_params)
+        self.model.fit(X_train_outer_rfe, y_train_outer)
+        return self.model.predict(X_test_outer_rfe)
 
     def fit(self, X, y):
         print('\n{0} <-- Running this model now'.format(type(self.model).__name__))
@@ -156,24 +173,9 @@ class NestedCV():
             best_inner_params_list.append(best_inner_params)
             best_inner_score_list.append(best_inner_score)
 
-            if self.do_recursive_feature_elimination:
-                print('\nRunning recursive feature elimination for outer loop...')
-
-                # K-fold (inner_kfolds) recursive feature elimination
-                rfe = RFECV(estimator=model, min_features_to_select=20,
-                            scoring='neg_mean_squared_error', cv=self.inner_kfolds, n_jobs=-1)
-                rfe.fit(X_train_outer, y_train_outer)
-
-                # Assign selected features to data
-                print('Best number of features was: {0}'.format(
-                    rfe.n_features_))
-                X_train_outer_rfe = rfe.transform(X_train_outer)
-                X_test_outer_rfe = rfe.transform(X_test_outer)
-
-                # Train model with best inner parameters on the outer split
-                model.set_params(**best_inner_params)
-                model.fit(X_train_outer_rfe, y_train_outer)
-                pred = model.predict(X_test_outer_rfe)
+            if self.recursive_feature_elimination:
+                pred = self._fit_recursive_feature_elimination(
+                    best_inner_params, X_train_outer, y_train_outer, X_test_outer)
             else:
                 # Train model with best inner parameters on the outer split
                 model.set_params(**best_inner_params)
@@ -191,6 +193,7 @@ class NestedCV():
                 best_inner_params_list[i]))
             print('Outer score: {0}'.format(outer_scores[i]))
             print('Inner score: {0}'.format(best_inner_score_list[i]))
+
         self.variance = variance
         self.outer_scores = outer_scores
         self.best_inner_score_list = best_inner_score_list

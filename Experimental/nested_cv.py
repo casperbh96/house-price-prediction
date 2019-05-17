@@ -199,6 +199,7 @@ class NestedCV():
         self.outer_scores = outer_scores
         self.best_inner_score_list = best_inner_score_list
         self.best_params = self._score_to_best_params(best_inner_params_list)
+        self.best_inner_params_list = best_inner_params_list
 
     def score_vs_variance_plot(self):
         # Plot score vs variance

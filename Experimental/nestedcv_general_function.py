@@ -58,62 +58,57 @@ def create_neural_network_model(first_neuron=64,
                                 activation='relu',
                                 optimizer='Adam',
                                 dropout_rate=0.1):
-    model = Sequential()
-    columns = X.shape[1]
-    
-    model.add(Dense(64, activation=activation, input_shape=(columns,)))
-    model.add(Dense(128, activation=activation))
-    model.add(Dropout(dropout_rate))
-    model.add(Dense(64, activation=activation))
-    model.add(Dropout(dropout_rate))
-    model.add(Dense(32, activation=activation))
-    model.add(Dropout(dropout_rate))
-    model.add(Dense(16, activation=activation))
-    model.add(Dropout(dropout_rate))
-    model.add(Dense(8, activation=activation))
-    model.add(Dropout(dropout_rate))
-    model.add(Dense(1, activation='linear'))
-    
-    model.compile(
-        loss='mean_squared_error', 
-        optimizer = 'adam', 
-        metrics=['mean_squared_error']
-    )
+    with tf.device('/gpu:0'):
+        model = Sequential()
+        columns = X.shape[1]
+
+        model.add(Dense(64, activation=activation, input_shape=(columns,)))
+        model.add(Dense(128, activation=activation))
+        model.add(Dropout(dropout_rate))
+        model.add(Dense(64, activation=activation))
+        model.add(Dropout(dropout_rate))
+        model.add(Dense(32, activation=activation))
+        model.add(Dropout(dropout_rate))
+        model.add(Dense(16, activation=activation))
+        model.add(Dropout(dropout_rate))
+        model.add(Dense(8, activation=activation))
+        model.add(Dropout(dropout_rate))
+        model.add(Dense(1, activation='linear'))
+
+        model.compile(
+            loss='mean_squared_error', 
+            optimizer = 'adam', 
+            metrics=['mean_squared_error']
+        )
     
     return model
 
+from tensorflow.python.client import device_lib
 
-models_to_run = [KerasRegressor(build_fn=create_neural_network_model,verbose=0),RandomForestRegressor(), xgb.XGBRegressor()]
+def get_available_gpus():
+    local_device_protos = device_lib.list_local_devices()
+    return [x.name for x in local_device_protos if x.device_type == 'GPU']
+
+print(get_available_gpus())
+
+models_to_run = [KerasRegressor(build_fn=create_neural_network_model,verbose=0)]
 
 models_param_grid = [
                     { # 1st param grid, corresponding to KerasRegressor
                             'epochs' :              [50,100,150,200],
                             'batch_size' :          [512,1024],
                             'optimizer' :           ['Adam', 'Nadam'],
-                            'dropout_rate' :        [0.0],
+                            'dropout_rate' :        [0.1, 0.2, 0.3, 0.4, 0.5],
                             'activation' :          ['relu', 'elu'],
                             'first_neuron' :        [100, 150, 200]
-                    },
-                    { # 2nd param grid, corresponding to RandomForestRegressor
-                            'max_depth': [3, None],
-                            'n_estimators': [100,200,300,400,500,600,700,800,900,1000],
-                            'max_features' : [50,100,150,200]
-                    }, 
-                    { # 3rd param grid, corresponding to XGBRegressor
-                            'learning_rate': [0.05],
-                            'colsample_bytree': np.linspace(0.3, 0.5),
-                            'n_estimators': [100,200,300,400,500,600,700,800,900,1000],
-                            'reg_alpha' : (1,1.2),
-                            'reg_lambda' : (1,1.2,1.4)
                     }
                     ]
 NUM_TRIALS = 50
 
-RF_scores = []
-XGB_scores = []
 NN_scores = []
 
 for trial in range(NUM_TRIALS):
+    print('Running {0} / {1}'.format(trial,NUM_TRIALS))
     for i,model in enumerate(models_to_run):
         nested_CV_search = NestedCV(model=model, params_grid=models_param_grid[i], outer_kfolds=5, inner_kfolds=5, 
                           cv_options={'sqrt_of_score':True, 'randomized_search_iter':30})
@@ -128,24 +123,6 @@ for trial in range(NUM_TRIALS):
         gscv.predict(X_test)
         score = np.sqrt(-gscv.best_score_)
         
-        if(type(model).__name__ == 'KerasRegressor'):
-            NN_scores.append(score)
-        elif(type(model).__name__ == 'RandomForestRegressor'):
-            RF_scores.append(score)
-        elif(type(model).__name__ == 'XGBRegressor'):
-            XGB_scores.append(score)
+        NN_scores.append(score)
         
         print('\nFinal score for {0} was {1}'.format(type(model).__name__,score))
-
-plt.figure()
-
-rf, = plt.plot(RF_scores, color='b')
-xgb, = plt.plot(XGB_scores, color='r')
-nn, = plt.plot(NN_scores, color='g')
-
-plt.legend([rf, xgb, nn],
-           ["Random Forest", "XGBoost", "Neural Networks"],
-           bbox_to_anchor=(0, .4, .5, 0))
-
-plt.title('Test scores as RMSLE with hyperparameter optimization',
-          x=.5, y=1.1, fontsize="15")

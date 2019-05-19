@@ -4,6 +4,7 @@ from sklearn.model_selection import KFold, ParameterGrid, ParameterSampler
 import numpy as np
 from sklearn.metrics import mean_squared_error
 from sklearn.feature_selection import RFE, RFECV
+import tensorflow as tf
 
 
 class NestedCV():
@@ -163,10 +164,10 @@ class NestedCV():
                 for param_dict in ParameterSampler(param_distributions=self.params_grid, 
                                                    n_iter=self.randomized_search_iter) if (self.randomized_search) else (
                                                            ParameterGrid(param_grid=self.params_grid)):
-                    # Set parameters, train model on inner split, predict results.
                     model.set_params(**param_dict)
                     model.fit(X_train_inner, y_train_inner)
                     inner_pred = model.predict(X_test_inner)
+                    
                     inner_grid_score = self.metric(y_test_inner, inner_pred)
                     current_inner_score_value = best_inner_score
     
@@ -193,9 +194,11 @@ class NestedCV():
                     best_inner_params, X_train_outer, y_train_outer, X_test_outer)
             else:
                 # Train model with best inner parameters on the outer split
-                model.set_params(**best_inner_params)
-                model.fit(X_train_outer, y_train_outer)
-                pred = model.predict(X_test_outer)
+                pred = None
+                with tf.device('/gpu:0'):
+                    model.set_params(**best_inner_params)
+                    model.fit(X_train_outer, y_train_outer)
+                    pred = model.predict(X_test_outer)
     
             outer_scores.append(self._transform_score_format(
                 self.metric(y_test_outer, pred)))

@@ -14,6 +14,7 @@ from sklearn.feature_selection import RFE, RFECV
 from fancyimpute import IterativeImputer
 import tensorflow as tf
 from nested_cv import NestedCV
+from tensorflow.keras import backend as K
 
 train = pd.read_csv('./data/train.csv')
 test = pd.read_csv('./data/test.csv')
@@ -102,7 +103,7 @@ for trial in range(NUM_TRIALS):
         nested_CV_search.fit(X=X,y=y)
         model_param_grid = nested_CV_search.best_params
         print('\nCumulated best parameter grids was:\n{0}'.format(model_param_grid))
-        
+        K.clear_session()
         gscv = GridSearchCV(estimator=model,param_grid=model_param_grid,scoring='neg_mean_squared_error',cv=5)
         gscv.fit(X,y)
         
@@ -111,7 +112,7 @@ for trial in range(NUM_TRIALS):
         score = np.sqrt(-gscv.best_score_)
         
         NN_scores.append(score)
-        
+        K.clear_session()
         print('\nFinal score for {0} was {1}'.format(type(model).__name__,score))
 
 print(NN_scores)

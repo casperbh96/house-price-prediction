@@ -5,7 +5,7 @@ import numpy as np
 from sklearn.metrics import mean_squared_error
 from sklearn.feature_selection import RFE, RFECV
 import tensorflow as tf
-
+from tensorflow.keras import backend as K
 
 class NestedCV():
     '''A general class to handle nested cross-validation for any estimator that
@@ -65,6 +65,10 @@ class NestedCV():
         self.best_params = {}
         self.best_inner_score_list = []
         self.variance = []
+        self.X = None
+        self.y = None
+        self.outer_cv = None
+        self.inner_cv = None
 
     # to check if use sqrt_of_score and handle the different cases
     def _transform_score_format(self, scoreValue):
@@ -133,19 +137,21 @@ class NestedCV():
         best_inner_params_list 
             Best inner params for each outer loop as an array of dictionaries
         '''
-    
+
         print('\n{0} <-- Running this model now'.format(type(self.model).__name__))
-        outer_cv = KFold(n_splits=self.outer_kfolds, shuffle=True)
-        inner_cv = KFold(n_splits=self.inner_kfolds, shuffle=True)
+        self.outer_cv = KFold(n_splits=self.outer_kfolds, shuffle=True)
+        self.inner_cv = KFold(n_splits=self.inner_kfolds, shuffle=True)
         model = self.model
-    
+        self.X = X
+        self.y = y
+        
         outer_scores = []
         variance = []
         best_inner_params_list = []  # Change both to by one thing out of key-value pair
         best_inner_score_list = []
     
         # Split X and y into K-partitions to Outer CV
-        for (i, (train_index, test_index)) in enumerate(outer_cv.split(X, y)):
+        for (i, (train_index, test_index)) in enumerate(self.outer_cv.split(X, y)):
             print('\n{0}/{1} <-- Current outer fold'.format(i+1, self.outer_kfolds))
             X_train_outer, X_test_outer = X.iloc[train_index], X.iloc[test_index]
             y_train_outer, y_test_outer = y.iloc[train_index], y.iloc[test_index]
@@ -153,7 +159,7 @@ class NestedCV():
             best_inner_score = None
     
             # Split X_train_outer and y_train_outer into K-partitions to be inner CV
-            for (j, (train_index_inner, test_index_inner)) in enumerate(inner_cv.split(X_train_outer, y_train_outer)):
+            for (j, (train_index_inner, test_index_inner)) in enumerate(self.inner_cv.split(X_train_outer, y_train_outer)):
                 print('\n\t{0}/{1} <-- Current inner fold'.format(j+1, self.inner_kfolds))
                 X_train_inner, X_test_inner = X_train_outer.iloc[
                     train_index_inner], X_train_outer.iloc[test_index_inner]
@@ -185,7 +191,8 @@ class NestedCV():
                     # Update best_inner_grid once rather than calling it under each if statement
                     if(current_inner_score_value is not None and current_inner_score_value != best_inner_score):
                         best_inner_params = param_dict
-    
+                    K.clear_session()
+                    
             best_inner_params_list.append(best_inner_params)
             best_inner_score_list.append(best_inner_score)
     
@@ -194,11 +201,9 @@ class NestedCV():
                     best_inner_params, X_train_outer, y_train_outer, X_test_outer)
             else:
                 # Train model with best inner parameters on the outer split
-                pred = None
-                with tf.device('/gpu:0'):
-                    model.set_params(**best_inner_params)
-                    model.fit(X_train_outer, y_train_outer)
-                    pred = model.predict(X_test_outer)
+                model.set_params(**best_inner_params)
+                model.fit(X_train_outer, y_train_outer)
+                pred = model.predict(X_test_outer)
     
             outer_scores.append(self._transform_score_format(
                 self.metric(y_test_outer, pred)))
@@ -232,3 +237,50 @@ class NestedCV():
 
         plt.title("{0}: Score VS Variance".format(type(self.model).__name__),
                   x=.5, y=1.1, fontsize="15")
+                  
+    def gridsearch_predict(self,X_test):
+        gscv_best_score = None
+        gscv_best_params = {}
+        
+        # Split X and y
+        for (i, (train_index_inner, test_index_inner)) in enumerate(self.inner_cv.split(self.X, self.y)):
+            print('\n\t{0}/{1} <-- Current GridSearch fold'.format(i+1, self.outer_kfolds))
+            X_train_fold, X_test_fold = self.X.iloc[
+                train_index_inner], self.X.iloc[test_index_inner]
+            y_train_fold, y_test_fold = self.y.iloc[
+                train_index_inner], self.y.iloc[test_index_inner]
+
+            # Run either RandomizedSearch or GridSearch for input parameters
+            for param_dict in ParameterGrid(param_grid=self.best_params):
+                self.model.set_params(**param_dict)
+                self.model.fit(X_train_fold, y_train_fold)
+                pred = self.model.predict(X_test_fold)
+                
+                grid_score = self.metric(y_test_fold, pred)
+                current_inner_score_value = gscv_best_score
+
+                # Find best score and corresponding best grid
+                if(gscv_best_score is not None):
+                    if(self.metric_score_indicator_lower and gscv_best_score > grid_score):
+                        gscv_best_score = self._transform_score_format(grid_score)
+                        
+                    elif (not self.metric_score_indicator_lower and gscv_best_score < grid_score):
+                        gscv_best_score = self._transform_score_format(grid_score)
+                else:
+                    gscv_best_score = self._transform_score_format(grid_score)
+                    current_inner_score_value = gscv_best_score+1  # first time random thing
+                    
+                # Update best_inner_grid once rather than calling it under each if statement
+                if(current_inner_score_value is not None and current_inner_score_value != gscv_best_score):
+                    gscv_best_params = param_dict
+                K.clear_session()
+        
+        print('\nBest GridSearch parameters was:\n{0}'.format(gscv_best_params))
+        
+        self.model.set_params(**param_dict)
+        self.model.fit(self.X, self.y)
+        model_pred = self.model.predict(X_test)
+        score = self.metric(self.y, model_pred)
+        
+        return self._transform_score_format(score)
+        

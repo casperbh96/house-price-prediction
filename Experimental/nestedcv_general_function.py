@@ -58,7 +58,7 @@ models_to_run = [RandomForestRegressor(), xgb.XGBRegressor(), lgb.LGBMRegressor(
 models_param_grid = [ 
                     { # 1st param grid, corresponding to RandomForestRegressor
                             'max_depth': [3, None],
-                            'n_estimators': [500],
+                            'n_estimators': [10],
                             #'max_features' : [50,100,150,200]
                     }, 
                     { # 2nd param grid, corresponding to XGBRegressor

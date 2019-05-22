@@ -191,7 +191,6 @@ class NestedCV():
                     # Update best_inner_grid once rather than calling it under each if statement
                     if(current_inner_score_value is not None and current_inner_score_value != best_inner_score):
                         best_inner_params = param_dict
-                    K.clear_session()
                     
             best_inner_params_list.append(best_inner_params)
             best_inner_score_list.append(best_inner_score)
@@ -273,11 +272,10 @@ class NestedCV():
                 # Update best_inner_grid once rather than calling it under each if statement
                 if(current_inner_score_value is not None and current_inner_score_value != gscv_best_score):
                     gscv_best_params = param_dict
-                K.clear_session()
         
         print('\nBest GridSearch parameters was:\n{0}'.format(gscv_best_params))
         
-        self.model.set_params(**param_dict)
+        self.model.set_params(**gscv_best_params)
         self.model.fit(self.X, self.y)
         model_pred = self.model.predict(X_test)
         score = self.metric(self.y, model_pred)

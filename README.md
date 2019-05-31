@@ -5,15 +5,6 @@ Group members
 - Mads Zeuch Ethelberg
 - Martin Moltke Wozniak
 
-# Installation
-You might need to install different packages to run some of our code. We used these packages in some of our code:
-
-`pip install tensorflow`
-
-`pip install keras`
-
-`pip install fancyimpute`
-
-`pip install missingno`
-
-`pip install xgboost`
+# What Did We Learn?
+- Exploring a dataset can take a long time. It takes a long time and is hard to really understand AND make sense of the data.
+- Implementing machine learning is intimidating at first, because many things needs to be considered.

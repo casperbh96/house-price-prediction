@@ -12,6 +12,8 @@ Group members
 - Working with packages such as NumPy, Pandas, Scikit-Learn, TensorFlow, XGBoost, FancyImpute etc. is crucial for modelling and makes the implementation part much easier.
 - Python standards and syntax, e.g. documentation, functions, variables and the mix of programming paradigms used.
 
+We documented most of what we learned in a 100 pages report, which is [found here](https://mlfromscratch.com/bachelor/).
+
 # What Should We Have Worked More on?
 - Model stacking
 - Trying more models
